@@ -41,6 +41,12 @@ Only metadata, hashes and tests are committed. The PDFs and their screenshots ar
 
 ## Production and platform status
 
-The CI workflow targets Ubuntu and Windows Chrome. Cloud Chromium results above do not imply a Windows run has finished. Firefox/Safari and a live translation provider are unverified.
+Implementation `c7dccc0` passed [Reader checks #5](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486442) on **Ubuntu 24.04 and Windows 2025**, using Chrome. Each platform ran syntax checks, 15 unit tests, the integrity-verified build and all 16 browser scenarios, including both real academic papers (17 runner tests including the parent). Synthetic screenshots and numerical corpus metrics are attached to that run; source PDFs and real-paper screenshots are excluded.
 
-GitHub API and the Pages hostname currently fail at the cloud proxy's CONNECT stage with HTTP 403, before a GitHub HTTP response. Git access and github.com HTML access work. The Pages workflow includes a fresh-browser production verification job; its exact run must pass before the production site is called verified. No live-site success is claimed from local tests.
+The [Pages workflow](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486413) completed successfully: build, deployment, and **verify-production**. The final job opened **https://fleetsnowfluff-ann.github.io/reader/** in a fresh Chrome profile on a GitHub-hosted runner and passed the 14 synthetic browser scenarios (15 runner tests including the parent). This verifies the actual deployed site, not only a local build. Real-paper tests run before deployment; they are not repeated against production.
+
+The earlier CI failure was reproduced: passing a relative corpus filename to Chrome's file-upload protocol caused both academic-paper imports to time out. Resolving those paths to absolute paths fixed the same reproduction and both runner platforms. Failed assertions now appear as Actions annotations as well as logs. Pages was enabled by the repository owner before the successful deployment.
+
+Direct access to the GitHub API and Pages hostname from this Codex environment still fails at the proxy's CONNECT stage with HTTP 403, before a GitHub HTTP response. Git access and github.com HTML access work; workflow status and the production-verification job were checked through those public run pages. Production browser verification therefore ran on GitHub, not through this blocked cloud proxy.
+
+Firefox/Safari, Edge-specific behavior and a live translation provider remain unverified. The optional adapter is tested with an intercepted response, not a paid external translation request. Pages actions emitted Node.js 20 deprecation warnings while successfully running under GitHub's forced Node.js 24 compatibility mode; the application's checks use Node.js 22.

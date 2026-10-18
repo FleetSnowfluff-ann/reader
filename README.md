@@ -71,7 +71,7 @@ To publish after review:
 2. Merge the reviewed implementation PR into `main`.
 3. The **Deploy reader to GitHub Pages** workflow repeats validation and deploys only after it passes. Its final job opens the deployed URL in a fresh real browser and exercises the reader, notes, imports and exports. Approve the `github-pages` environment deployment if your repository requires it.
 
-Expected project URL: **https://FleetSnowfluff-ann.github.io/reader/**. This is a deployment target, not a claim that the site is already published. The authoritative deployed URL and status appear in the Pages workflow. Relative asset URLs support the `/reader/` project subpath. A private repository may require a GitHub plan supporting Pages; the application itself uses no paid service.
+Live website: **https://fleetsnowfluff-ann.github.io/reader/**. [Deployment and fresh-browser production verification passed](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486413) for implementation `c7dccc0` on 2026-10-19 (Asia/Shanghai). [Ubuntu and Windows Chrome checks also passed](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486442), including the real-paper corpus. See the [validation report](docs/VALIDATION.md) for scope and limitations. Relative asset URLs support the `/reader/` project subpath. The application uses no paid service.
 
 No provider keys, Pages tokens, or personal PDFs belong in Actions secrets or artifacts for this static workflow. GitHub's built-in Pages OIDC token is used for deployment, with write permissions limited to the deployment job.
 
