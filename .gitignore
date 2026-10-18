@@ -1,0 +1,12 @@
+dist/
+.cache/
+node_modules/
+coverage/
+test-results/
+*.pdf
+*.env
+.env*
+notes/
+private/
+*.reader.json
+*.reader.md

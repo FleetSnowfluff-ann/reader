@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="description" content="A private, bilingual workspace for reading academic papers in English and Chinese.">
+  <title>Parallel — Read across languages</title>
+  <link rel="stylesheet" href="./vendor/web/pdf_viewer.css">
+  <link rel="stylesheet" href="./src/styles.css">
+  <script type="module" src="./src/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="Parallel home"><span class="brand-mark" aria-hidden="true"><span></span></span>parallel<span class="brand-label">PAPER READER</span></a>
+    <span class="privacy"><span aria-hidden="true">●</span> Local-first · 私密阅读</span>
+    <button id="open-file" class="primary">＋ Open PDF <span lang="zh">打开文献</span></button>
+    <input id="file-input" type="file" accept="application/pdf,.pdf" hidden>
+  </header>
+
+  <main>
+    <section id="welcome" class="welcome">
+      <div class="eyebrow">A LITTLE LESS FRICTION. A LITTLE MORE UNDERSTANDING.</div>
+      <h1>Good ideas deserve<br>to cross <em>languages.</em></h1>
+      <p class="intro">Your paper, two perspectives. Read, connect, and collect your thoughts<br class="desktop"> in a quiet workspace for English–Chinese research.</p>
+      <p class="intro-zh" lang="zh">跨越语言，专注理解。</p>
+      <div id="drop-zone" class="drop-zone">
+        <span class="document-icon" aria-hidden="true">▤</span>
+        <h2>A new perspective starts here</h2>
+        <p>Drop a PDF, or open one from your device.</p>
+        <button id="welcome-open" class="primary">Choose a paper <span aria-hidden="true">→</span></button>
+        <button id="demo" class="text-button">Explore a sample paper →</button>
+        <small>PDFs are processed on your device. No account. No upload.</small>
+      </div>
+      <div class="feature-strip"><span><b>01</b> Read side by side</span><span><b>02</b> Connect the meaning</span><span><b>03</b> Keep your insights</span></div>
+      <section class="library-section" aria-labelledby="library-heading"><h2 id="library-heading">Your reading desk <span lang="zh">最近阅读</span></h2><div id="library"></div></section>
+    </section>
+
+    <section id="reader" hidden aria-label="Reading workspace">
+      <div class="document-bar">
+        <button id="back" class="icon-button" aria-label="Back to reading desk">←</button>
+        <div class="document-title"><h1 id="document-name"></h1><span id="document-meta">Saved on this device</span></div>
+        <button id="export" class="secondary">Export Markdown →</button>
+      </div>
+      <div class="reader-toolbar">
+        <div class="segmented" aria-label="Workspace view"><button data-view="split" aria-pressed="true">Bilingual <span lang="zh">双语</span></button><button data-view="pdf" aria-pressed="false">PDF</button><button data-view="text" aria-pressed="false">Text</button></div>
+        <div class="page-controls"><button id="previous" aria-label="Previous page">‹</button><label>Page <input id="page-number" aria-label="Page number" type="number" min="1" value="1"></label><span id="page-count">/ 1</span><button id="next" aria-label="Next page">›</button></div>
+        <div class="zoom-controls"><button id="zoom-out" aria-label="Zoom out">−</button><output id="zoom-value">100%</output><button id="zoom-in" aria-label="Zoom in">＋</button></div>
+        <button id="toggle-notes" class="secondary" aria-expanded="true">Notes <span id="note-count">0</span></button>
+      </div>
+      <div class="workspace" data-view="split">
+        <section id="pdf-pane" class="pdf-pane" aria-label="PDF page">
+          <div class="pane-heading"><span>ORIGINAL PAPER</span><button id="highlight-selection" class="text-button">Highlight selection</button></div>
+          <div id="pdf-scroll" class="pdf-scroll"><div id="pdf-page"><canvas id="pdf-canvas" aria-label="Rendered PDF page"></canvas><div id="pdf-highlights"></div><div id="text-layer" class="textLayer"></div></div></div>
+        </section>
+        <section id="bilingual-pane" class="bilingual-pane" aria-label="Bilingual sentences">
+          <div class="pane-heading"><span>READ BETWEEN THE LINES <span lang="zh">双语对照</span></span><button id="translation-settings" class="text-button">＋ Translation</button></div>
+          <div class="alignment-hint">Select either language to find its counterpart. <span lang="zh">点击句子，双向定位。</span><span>Extracted reading order may vary. Check the original, especially columns and formulas.</span></div>
+          <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find in this page · 搜索本页" aria-label="Find sentences on this page"></label>
+          <div id="sentences" class="sentences"></div>
+        </section>
+        <aside id="notes-pane" class="notes-pane" aria-label="Annotations and notes">
+          <div class="pane-heading"><span>YOUR MARGINALIA <span lang="zh">笔记</span></span></div>
+          <div class="notes-inner"><label for="note-text">An idea worth keeping</label><div id="note-anchor" class="note-anchor">Page note · Select a sentence to attach a quote</div><textarea id="note-text" rows="4" placeholder="What does this bring to mind?&#10;记录你的想法…"></textarea><button id="save-note" class="primary">Save note</button><div id="notes-list"></div><p class="storage-hint">Stored only in this browser. Export a Markdown copy before clearing browser data.</p></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <dialog id="translation-dialog">
+    <form method="dialog" class="dialog-heading"><h2>Bring in another perspective <span lang="zh">添加译文</span></h2><button aria-label="Close translation settings" class="icon-button">×</button></form>
+    <p>Link a translation to the selected English sentence, or import sentence links for this page. Imported and service-generated links are always marked unreviewed.</p>
+    <label for="manual-translation">Chinese translation <span lang="zh">中文译文</span></label><textarea id="manual-translation" rows="3" placeholder="输入所选句子的译文…"></textarea><button id="add-translation" class="primary">Link to selected sentence</button>
+    <hr><h3>Import / export alignment</h3><p>JSON: <code>[{"sourceIds":["p1-s1"],"text":"译文"}]</code>. Use an empty sourceIds array for unaligned text. Unknown source IDs are rejected.</p><div class="button-row"><button id="export-source" class="secondary">Export page source IDs</button><button id="import-translations" class="secondary">Import translation JSON</button><input id="translation-file" type="file" accept="application/json,.json" hidden></div>
+    <hr><h3>Optional translation adapter</h3><p>Connect a server you trust. API keys belong on that server, never in this reader. Only this page’s extracted text and sentence IDs are sent when you press Translate.</p>
+    <label for="endpoint">HTTPS endpoint (no API keys)</label><input id="endpoint" type="url" placeholder="https://your-adapter.example/translate" autocomplete="off">
+    <label class="consent"><input id="translation-consent" type="checkbox"> I trust this endpoint and consent to sending this page’s text.</label><button id="translate-page" class="secondary">Translate current page</button>
+    <p id="translation-status" role="status"></p>
+  </dialog>
+</body>
+</html>
