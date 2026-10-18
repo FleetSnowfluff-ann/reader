@@ -80,6 +80,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
   await t.test('highlights, annotation, editing and PDF text selection', async () => {
     await cdp.eval(`document.querySelector('.sentence-actions button').click()`);
     await until(() => cdp.eval(`document.querySelectorAll('.sentence-source.marked').length===1`));
+    assert.ok(await cdp.eval(`document.querySelectorAll('.pdf-mark').length>0`), 'Sentence highlighting immediately marks the PDF');
     await cdp.eval(`document.querySelector('#note-text').value='A persistent research question.'; document.querySelector('#save-note').click()`);
     await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('A persistent research question.')`));
     await cdp.eval(`[...document.querySelectorAll('.note-card button')].find(b=>b.textContent==='Edit').click()`);
@@ -211,6 +212,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await cdp.eval(`document.querySelector('#persist-notes').checked=false; document.querySelector('#persist-notes').dispatchEvent(new Event('change'))`);
     await cdp.eval(`document.querySelector('#note-text').value='session-only sentinel'; document.querySelector('#save-note').click()`);
     await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('session-only sentinel')`));
+    assert.match(await cdp.eval(`document.querySelector('#status').textContent`), /kept for this session/);
     const records = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(d=>JSON.stringify(d))`);
     assert.ok(!records.includes('session-only sentinel'));
     await cdp.eval(`document.querySelector('#persist-notes').checked=true; document.querySelector('#persist-notes').dispatchEvent(new Event('change'))`);
@@ -222,7 +224,8 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     for (const paper of corpus) await t.test(`real academic paper: ${paper.name}`, async () => {
       const dom = await cdp.send('DOM.getDocument');
       const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector: '#file-input' });
-      const filename = path.join(process.env.REAL_PAPERS_DIR, paper.file);
+      // CDP file uploads require absolute paths, including on Windows runners.
+      const filename = path.resolve(process.env.REAL_PAPERS_DIR, paper.file);
       const original = await readFile(filename);
       await cdp.send('DOM.setFileInputFiles', { nodeId, files: [filename] });
       await until(() => cdp.eval(`document.querySelector('#document-name').textContent===${JSON.stringify(paper.file)} && document.querySelector('#status').textContent.includes('Paper opened')`));

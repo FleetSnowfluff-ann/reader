@@ -215,7 +215,7 @@ function renderSentences() {
     actions.append(button('Highlight', '', async () => {
       if (state.doc.notes.some(n => n.sourceId === source.id && n.kind === 'highlight')) return status('This sentence is already highlighted.');
       state.doc.notes.push(createNote({ kind: 'highlight', page: state.page, sourceId: source.id, quote: source.text, text: '' }));
-      await save(); renderSentences(); renderNotes();
+      await save(); renderSentences(); renderHighlights(); renderNotes();
     }), button('Annotate', '', () => { selectSentence(source.id, 'source'); showNotes(true); $('#note-text').focus(); }), button('＋ 中文', '', () => { selectSentence(source.id, 'source'); $('#translation-dialog').showModal(); }));
     block.append(actions);
     for (const target of targets) if (!rendered.has(target.id)) { block.append(translationCard(target)); rendered.add(target.id); }
@@ -299,7 +299,7 @@ on('#save-note', 'click', async () => {
   if (!text) throw new Error('Write a note first.');
   if (text.length > 20000) throw new Error('Please keep notes under 20,000 characters.');
   state.doc.notes.push(createNote({ kind: 'note', page: state.page, sourceId: state.selected, sourceIds: [...state.activeSourceIds], quote: state.quote, text }));
-  await save(); $('#note-text').value = ''; renderNotes(); status('Note saved on this device.');
+  await save(); $('#note-text').value = ''; renderNotes(); status(persistent ? 'Note saved on this device.' : 'Note kept for this session. Export before closing.');
 });
 on('#highlight-selection', 'pointerdown', e => e.preventDefault());
 on('#highlight-selection', 'click', async () => {
