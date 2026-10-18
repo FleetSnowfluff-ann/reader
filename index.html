@@ -14,7 +14,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="./" aria-label="Parallel home"><span class="brand-mark" aria-hidden="true"><span></span></span>parallel<span class="brand-label">PAPER READER</span></a>
-    <span class="privacy"><span aria-hidden="true">●</span> Local-first · 私密阅读</span>
+    <label class="privacy"><input id="persist-notes" type="checkbox" checked> Save notes on this device · 本地保存</label>
     <button id="open-file" class="primary">＋ Open PDF <span lang="zh">打开文献</span></button>
     <input id="file-input" type="file" accept="application/pdf,.pdf" hidden>
   </header>
@@ -56,12 +56,13 @@
         </section>
         <section id="bilingual-pane" class="bilingual-pane" aria-label="Bilingual sentences">
           <div class="pane-heading"><span>READ BETWEEN THE LINES <span lang="zh">双语对照</span></span><button id="translation-settings" class="text-button">＋ Translation</button></div>
-          <div class="alignment-hint">Select either language to find its counterpart. <span lang="zh">点击句子，双向定位。</span><span>Extracted reading order may vary. Check the original, especially columns and formulas.</span></div>
+          <div class="alignment-hint">Click a PDF sentence or its translation to follow the link. <span lang="zh">点击原文或译文，双向定位。</span><span id="layout-status">Extracted reading order may vary. Verify formulas and tables in the PDF.</span></div>
           <label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find in this page · 搜索本页" aria-label="Find sentences on this page"></label>
           <div id="sentences" class="sentences"></div>
         </section>
         <aside id="notes-pane" class="notes-pane" aria-label="Annotations and notes">
           <div class="pane-heading"><span>YOUR MARGINALIA <span lang="zh">笔记</span></span></div>
+          <div class="backup-controls"><button id="export-json">JSON backup ↓</button><button id="restore-json">Restore ↑</button><input id="backup-file" type="file" accept=".json,application/json" hidden></div>
           <div class="notes-inner"><label for="note-text">An idea worth keeping</label><div id="note-anchor" class="note-anchor">Page note · Select a sentence to attach a quote</div><textarea id="note-text" rows="4" placeholder="What does this bring to mind?&#10;记录你的想法…"></textarea><button id="save-note" class="primary">Save note</button><div id="notes-list"></div><p class="storage-hint">Stored only in this browser. Export a Markdown copy before clearing browser data.</p></div>
         </aside>
       </div>

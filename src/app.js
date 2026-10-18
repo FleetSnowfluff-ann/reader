@@ -1,11 +1,16 @@
-import * as pdfjs from '../vendor/build/pdf.mjs';
-import { sentences, extractText, validateTranslations, linkedIds, markdown, validateEndpoint } from './core.js';
+import { PDFReader } from './pdf.js';
+import { allSources, pageTranslations, hitTest, correctLink } from './alignment.js';
+import { requestTranslation } from './translation.js';
+import { createNote, exportBackup, importBackup } from './annotations.js';
+import { recoverSourceAnchors } from './extraction.js';
+import { validateTranslations, linkedIds, markdown } from './core.js';
 import { storage } from './storage.js';
 import { samplePDF } from './sample.js';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('../vendor/build/pdf.worker.mjs', import.meta.url).href;
+const sessionDocuments = new Map();
+let persistent = true;
 const $ = selector => document.querySelector(selector);
-const state = { pdf: null, doc: null, page: 1, zoom: 1, selected: null, quote: '', render: null, generation: 0, opening: 0, translationRequest: null };
+const state = { pdf: null, doc: null, page: 1, zoom: 1, selected: null, quote: '', render: null, generation: 0, opening: 0, translationRequest: null, engine: null, activeSourceIds: [] };
 let toastTimer;
 function status(message, error = false) {
   clearTimeout(toastTimer);
@@ -36,6 +41,8 @@ function button(text, className, action) {
 let writes = Promise.resolve();
 async function save() {
   const snapshot = structuredClone(state.doc);
+  sessionDocuments.set(snapshot.id, snapshot);
+  if (!persistent) { $('#document-meta').textContent = 'Session only · Export before closing this tab'; return; }
   writes = writes.catch(() => {}).then(() => storage('put', snapshot));
   try { await writes; $('#document-meta').textContent = 'Saved on this device · PDF is not stored'; }
   catch { $('#document-meta').textContent = 'Not saved — export your notes now'; throw new Error('Browser storage is unavailable or full. Export your notes before leaving.'); }
@@ -47,10 +54,13 @@ function download(name, content, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 const sources = () => state.doc?.sources?.[state.page] || [];
-const translations = () => state.doc?.translations?.[state.page] || [];
+const translations = () => state.doc ? pageTranslations(state.doc, state.page) : [];
+const addTranslations = entries => state.doc.translations[state.page].push(...entries);
 
 async function refreshLibrary() {
-  const documents = await storage('getAll');
+  let saved = [];
+  if (persistent) { try { saved = await storage('getAll'); } catch { status('Browser storage unavailable. Use session mode and export your work.', true); } }
+  const documents = [...new Map([...saved, ...sessionDocuments.values()].map(d => [d.id, d])).values()];
   $('#library').replaceChildren();
   if (!documents.length) $('#library').append(node('p', 'library-empty', 'A quiet desk, ready for your first paper. 你的阅读旅程从这里开始。'));
   for (const doc of documents.sort((a, b) => b.updated - a.updated)) {
@@ -59,7 +69,7 @@ async function refreshLibrary() {
     open.append(node('small', '', `${doc.notes.length} annotations · page ${doc.lastPage || 1} · ${doc.sample ? 'Sample paper' : 'Reopen the original PDF to continue'}`));
     const remove = button('Forget', 'danger', async () => {
       if (!confirm(`Delete local notes and translations for “${doc.name}”? Export anything you want to keep first.`)) return;
-      await storage('delete', doc.id); await refreshLibrary();
+      await storage('delete', doc.id); sessionDocuments.delete(doc.id); await refreshLibrary();
     });
     remove.setAttribute('aria-label', `Forget ${doc.name}`);
     item.append(open, remove); $('#library').append(item);
@@ -73,22 +83,20 @@ async function openPDF(bytes, name, sample = false) {
   status('Opening your paper…');
   const id = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(b => b.toString(16).padStart(2, '0')).join('');
   await writes.catch(() => {});
-  const existing = await storage('get', id);
-  const task = pdfjs.getDocument({ data: bytes, cMapUrl: new URL('../vendor/cmaps/', import.meta.url).href, cMapPacked: true, standardFontDataUrl: new URL('../vendor/standard_fonts/', import.meta.url).href, wasmUrl: new URL('../vendor/wasm/', import.meta.url).href, isEvalSupported: false, enableXfa: false });
-  task.onPassword = (updatePassword, reason) => {
-    const password = prompt(reason === pdfjs.PasswordResponses.INCORRECT_PASSWORD ? 'Incorrect password. Try again (not stored):' : 'This PDF is encrypted. Enter its password (not stored):');
-    if (password === null) task.destroy(); else updatePassword(password);
-  };
-  let pdf;
-  try { pdf = await task.promise; } catch (error) { await task.destroy(); throw new Error(`Could not open this PDF: ${error.message}`); }
+  let existing = sessionDocuments.get(id);
+  if (!existing && persistent) { try { existing = await storage('get', id); } catch { persistent = false; $('#persist-notes').checked = false; status('Storage unavailable; using session mode. Export before closing.', true); } }
+  const engine = new PDFReader();
+  const pdf = await engine.open(bytes, incorrect => prompt(incorrect ? 'Incorrect PDF password. Try again (not stored):' : 'PDF password (not stored):'));
   if (opening !== state.opening) { await pdf.destroy(); return; }
   state.translationRequest?.abort();
   state.generation++;
-  if (state.pdf) await state.pdf.destroy();
+  if (state.engine) await state.engine.destroy();
+  state.engine = engine;
   state.pdf = pdf;
   state.doc = existing || { id, name, sample, notes: [], sources: {}, translations: {}, lastPage: 1, updated: Date.now() };
+  state.doc.pageCount = pdf.numPages;
   state.page = Math.min(state.doc.lastPage || 1, pdf.numPages);
-  state.zoom = 1; state.selected = null; state.quote = '';
+  state.zoom = 1; state.selected = null; state.quote = ''; state.activeSourceIds = [];
   $('#search').value = ''; $('#note-text').value = '';
   $('#welcome').hidden = true; $('#reader').hidden = false;
   $('#document-name').textContent = state.doc.name;
@@ -101,14 +109,14 @@ async function openPDF(bytes, name, sample = false) {
 async function renderPage() {
   const generation = ++state.generation;
   const doc = state.doc, pageNumber = state.page;
-  const page = await state.pdf.getPage(pageNumber);
-  const content = await page.getTextContent();
+  const extracted = await state.engine.extract(pageNumber);
   if (generation !== state.generation) return;
-  if (state.render) { state.render.cancel(); try { await state.render.promise; } catch {} }
-  if (generation !== state.generation) return;
-  // PDF content order is a candidate reading order, not a guaranteed semantic order.
-  // Preserve previously saved IDs so future extraction refinements cannot silently relink notes.
-  doc.sources[pageNumber] ||= sentences(extractText(content.items), pageNumber);
+  const old = doc.sources[pageNumber];
+  if (old && JSON.stringify(old.map(s => [s.id, s.text])) !== JSON.stringify(extracted.sources.map(s => [s.id, s.text]))) {
+    doc.sources[pageNumber] = recoverSourceAnchors(old, extracted.content.items, extracted.page.getViewport({ scale: 1 }));
+    extracted.warnings.push('Saved sentence IDs retained. Unresolved anchors are flagged, not reassigned.');
+  } else doc.sources[pageNumber] = extracted.sources;
+  $('#layout-status').textContent = extracted.warnings.join(' ');
   doc.translations[pageNumber] ||= [];
   doc.seededPages ||= {};
   if (doc.sample && !doc.seededPages[pageNumber]) {
@@ -129,24 +137,9 @@ async function renderPage() {
   $('#page-number').value = pageNumber;
   $('#previous').disabled = pageNumber <= 1; $('#next').disabled = pageNumber >= state.pdf.numPages;
   $('#zoom-value').textContent = `${Math.round(state.zoom * 100)}%`;
-  const available = Math.max(220, ($('#pdf-scroll').clientWidth || 650) - 36);
-  const base = page.getViewport({ scale: 1 });
-  const scale = Math.min(1.5, available / base.width) * state.zoom;
-  const viewport = page.getViewport({ scale });
-  const ratio = Math.min(window.devicePixelRatio || 1, 2);
-  const canvas = $('#pdf-canvas');
-  canvas.width = Math.ceil(viewport.width * ratio); canvas.height = Math.ceil(viewport.height * ratio);
-  canvas.style.width = `${viewport.width}px`; canvas.style.height = `${viewport.height}px`;
-  $('#pdf-page').style.width = `${viewport.width}px`; $('#pdf-page').style.height = `${viewport.height}px`;
-  $('#pdf-page').style.setProperty('--scale-factor', scale);
-  $('#pdf-page').style.setProperty('--total-scale-factor', scale);
-  $('#text-layer').replaceChildren();
-  state.render = page.render({ canvasContext: canvas.getContext('2d'), viewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] });
-  try { await state.render.promise; } catch (error) { if (error.name === 'RenderingCancelledException') return; throw error; }
-  if (generation !== state.generation) return;
-  const layer = new pdfjs.TextLayer({ textContentSource: content, container: $('#text-layer'), viewport });
-  await layer.render();
-  if (generation !== state.generation) return;
+  const ready = await state.engine.render(extracted, { canvas: $('#pdf-canvas'), container: $('#pdf-page'), textContainer: $('#text-layer'), availableWidth: Math.max(220, ($('#pdf-scroll').clientWidth || 650) - 36), zoom: state.zoom });
+  if (!ready || generation !== state.generation) return;
+  for (const source of sources()) source.rects = state.engine.exactRectangles(source, $('#pdf-page'));
   renderSentences(); renderNotes(); renderHighlights(); updateAnchor();
   await save();
 }
@@ -154,15 +147,18 @@ async function renderPage() {
 function updateAnchor() {
   $('#note-anchor').textContent = state.quote ? `Page ${state.page} · “${state.quote}”` : `Page ${state.page} note · Select a sentence to attach a quote`;
 }
-function selectSentence(id, side) {
-  const related = linkedIds(translations(), id, side);
+async function selectSentence(id, side) {
+  const related = linkedIds(Object.values(state.doc.translations).flat(), id, side);
   const sourceIds = side === 'source' ? [id] : related;
   const targetIds = side === 'target' ? [id] : related;
+  if (side === 'target' && sourceIds.length && !sourceIds.some(id => id.startsWith(`p${state.page}-`))) await goPage(allSources(state.doc).find(s => s.id === sourceIds[0]).page);
+  state.activeSourceIds = sourceIds;
   state.selected = sourceIds.length === 1 ? sourceIds[0] : null;
-  state.quote = sources().filter(s => sourceIds.includes(s.id)).map(s => s.text).join(' ');
+  state.quote = allSources(state.doc).filter(s => sourceIds.includes(s.id)).map(s => s.text).join(' ');
   document.querySelectorAll('[data-source-id]').forEach(element => element.classList.toggle('selected', sourceIds.includes(element.dataset.sourceId)));
   document.querySelectorAll('[data-target-id]').forEach(element => element.classList.toggle('selected', targetIds.includes(element.dataset.targetId)));
-  updateAnchor();
+  updateAnchor(); renderHighlights();
+  if (side === 'target') $('#pdf-highlights .pdf-linked-mark')?.scrollIntoView({ block: 'center', behavior: 'auto' });
   const counterpart = side === 'source' ? document.querySelector(`[data-target-id="${targetIds[0]}"]`) : document.querySelector(`[data-source-id="${sourceIds[0]}"]`);
   counterpart?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
 }
@@ -182,8 +178,19 @@ function translationCard(translation) {
     translation.sourceIds = [state.selected]; translation.confirmed = false;
     await save(); renderSentences();
   }));
-  meta.append(button('Remove', 'review-button', async () => {
-    state.doc.translations[state.page] = translations().filter(t => t.id !== translation.id); await save(); renderSentences();
+  meta.append(button('Edit source IDs', 'review-button', async () => {
+    const value = prompt('Source IDs, comma separated. Visit both pages first for cross-page links. Empty = unaligned.', translation.sourceIds.join(', '));
+    if (value === null) return;
+    correctLink(translation, value.split(',').map(id => id.trim()).filter(Boolean), allSources(state.doc));
+    await save(); renderSentences();
+  }), button('Edit text', 'review-button', async () => {
+    const value = prompt('Edit Chinese translation:', translation.text);
+    if (value === null) return;
+    const [entry] = validateTranslations([{ text: value, sourceIds: translation.sourceIds }], allSources(state.doc));
+    translation.text = entry.text; translation.confirmed = false; await save(); renderSentences();
+  }), button('Remove', 'review-button', async () => {
+    for (const page of Object.keys(state.doc.translations)) state.doc.translations[page] = state.doc.translations[page].filter(t => t.id !== translation.id);
+    await save(); renderSentences();
   }));
   card.append(target, meta); return card;
 }
@@ -198,6 +205,7 @@ function renderSentences() {
     if (query && !source.text.toLowerCase().includes(query) && !targets.some(t => t.text.toLowerCase().includes(query))) continue;
     const block = node('article', 'sentence-block');
     block.append(node('div', 'sentence-label', `ENGLISH · ${source.id}`));
+    if (source.warnings?.length) block.append(node('div', 'source-warning', source.warnings.join(' · ')));
     const sourceButton = button(source.text, 'sentence-source', () => selectSentence(source.id, 'source'));
     sourceButton.dataset.sourceId = source.id;
     sourceButton.classList.toggle('marked', state.doc.notes.some(n => n.sourceId === source.id && n.kind === 'highlight'));
@@ -206,7 +214,7 @@ function renderSentences() {
     const actions = node('div', 'sentence-actions');
     actions.append(button('Highlight', '', async () => {
       if (state.doc.notes.some(n => n.sourceId === source.id && n.kind === 'highlight')) return status('This sentence is already highlighted.');
-      state.doc.notes.push({ id: crypto.randomUUID(), kind: 'highlight', page: state.page, sourceId: source.id, quote: source.text, text: '', created: Date.now() });
+      state.doc.notes.push(createNote({ kind: 'highlight', page: state.page, sourceId: source.id, quote: source.text, text: '' }));
       await save(); renderSentences(); renderNotes();
     }), button('Annotate', '', () => { selectSentence(source.id, 'source'); showNotes(true); $('#note-text').focus(); }), button('＋ 中文', '', () => { selectSentence(source.id, 'source'); $('#translation-dialog').showModal(); }));
     block.append(actions);
@@ -247,8 +255,14 @@ function renderNotes() {
 }
 function renderHighlights() {
   $('#pdf-highlights').replaceChildren();
-  for (const note of state.doc.notes.filter(n => n.page === state.page)) for (const rect of note.rects || []) {
+  const marks = state.doc.notes.filter(n => n.page === state.page).map(note => ({ ...note, rects: note.sourceId ? sources().find(s => s.id === note.sourceId)?.rects || [] : note.rects }));
+  for (const note of marks) for (const rect of note.rects || []) {
     const mark = node('div', 'pdf-mark');
+    Object.assign(mark.style, { left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%` });
+    $('#pdf-highlights').append(mark);
+  }
+  for (const source of sources().filter(s => state.activeSourceIds.includes(s.id))) for (const rect of source.rects || []) {
+    const mark = node('div', 'pdf-linked-mark'); mark.dataset.sourceId = source.id;
     Object.assign(mark.style, { left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%` });
     $('#pdf-highlights').append(mark);
   }
@@ -256,7 +270,7 @@ function renderHighlights() {
 async function goPage(value) {
   const page = Number(value);
   if (!Number.isInteger(page) || page < 1 || page > state.pdf.numPages) { $('#page-number').value = state.page; throw new Error('Enter a valid page number.'); }
-  state.page = page; state.selected = null; state.quote = ''; $('#search').value = '';
+  state.page = page; state.selected = null; state.quote = ''; state.activeSourceIds = []; $('#search').value = '';
   await renderPage();
 }
 
@@ -284,7 +298,7 @@ on('#save-note', 'click', async () => {
   const text = $('#note-text').value.trim();
   if (!text) throw new Error('Write a note first.');
   if (text.length > 20000) throw new Error('Please keep notes under 20,000 characters.');
-  state.doc.notes.push({ id: crypto.randomUUID(), kind: 'note', page: state.page, sourceId: state.selected, quote: state.quote, text, created: Date.now() });
+  state.doc.notes.push(createNote({ kind: 'note', page: state.page, sourceId: state.selected, sourceIds: [...state.activeSourceIds], quote: state.quote, text }));
   await save(); $('#note-text').value = ''; renderNotes(); status('Note saved on this device.');
 });
 on('#highlight-selection', 'pointerdown', e => e.preventDefault());
@@ -295,7 +309,7 @@ on('#highlight-selection', 'click', async () => {
   if (!$('#text-layer').contains(range.commonAncestorContainer)) throw new Error('Select text inside the PDF page.');
   const pageRect = $('#pdf-page').getBoundingClientRect();
   const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0).map(r => ({ x: Math.max(0, (r.left - pageRect.left) / pageRect.width), y: Math.max(0, (r.top - pageRect.top) / pageRect.height), width: Math.min(1, r.width / pageRect.width), height: Math.min(1, r.height / pageRect.height) }));
-  state.doc.notes.push({ id: crypto.randomUUID(), kind: 'highlight', page: state.page, quote: selection.toString(), text: '', rects, created: Date.now() });
+  state.doc.notes.push(createNote({ kind: 'highlight', page: state.page, quote: selection.toString(), text: '', rects }));
   selection.removeAllRanges(); await save(); renderHighlights(); renderNotes(); status('PDF selection highlighted. Add a comment with Edit in Notes.');
 });
 on('#export', 'click', () => download(state.doc.name.replace(/\.pdf$/i, '') + '.reader.md', markdown(state.doc, state.doc.notes), 'text/markdown;charset=utf-8'));
@@ -304,39 +318,34 @@ on('#add-translation', 'click', async () => {
   if (!state.selected) throw new Error('Select one English sentence before adding a translation.');
   const text = $('#manual-translation').value.trim();
   const [entry] = validateTranslations([{ sourceIds: [state.selected], text }], sources());
-  entry.confirmed = true; translations().push(entry);
+  entry.confirmed = true; addTranslations([entry]);
   await save(); $('#manual-translation').value = ''; $('#translation-dialog').close(); renderSentences(); status('Translation linked to the selected sentence.');
 });
 on('#export-source', 'click', () => download(`page-${state.page}-sources.json`, JSON.stringify({ documentId: state.doc.id, page: state.page, sentences: sources() }, null, 2), 'application/json'));
 on('#import-translations', 'click', () => $('#translation-file').click());
 on('#translation-file', 'change', async e => {
   const file = e.target.files[0]; e.target.value = ''; if (!file) return;
-  const doc = state.doc, page = state.page, pageSources = sources();
+  const doc = state.doc, page = state.page, pageSources = allSources(state.doc);
   if (file.size > 2 * 1024 * 1024) throw new Error('Translation files must be smaller than 2 MB.');
   const imported = validateTranslations(JSON.parse(await file.text()), pageSources);
   if (state.doc !== doc || state.page !== page) throw new Error('The page changed. Import again on the intended page.');
   if (translations().length + imported.length > 2000) throw new Error('At most 2,000 translations are supported per page.');
-  translations().push(...imported); await save(); renderSentences();
+  addTranslations(imported); await save(); renderSentences();
   $('#translation-status').textContent = `Imported ${imported.length} translations. Review their sentence links before confirming.`;
 });
 on('#translate-page', 'click', async () => {
   if (!$('#translation-consent').checked) throw new Error('Consent is required before sending text to a translation endpoint.');
-  const endpoint = validateEndpoint($('#endpoint').value);
+  const endpoint = $('#endpoint').value;
   if (!sources().length) throw new Error('No extracted text to translate.');
   const doc = state.doc, page = state.page, pageSources = sources();
   const controller = new AbortController(); state.translationRequest?.abort(); state.translationRequest = controller;
   const timeout = setTimeout(() => controller.abort(), 30000);
   $('#translate-page').disabled = true; $('#translation-status').textContent = 'Sending this page’s text to your adapter…';
   try {
-    const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', signal: controller.signal, body: JSON.stringify({ sourceLanguage: 'en', targetLanguage: 'zh-CN', sentences: pageSources.map(({ id, text }) => ({ id, text })) }) });
-    if (!response.ok) throw new Error(`Translation adapter returned HTTP ${response.status}. Check its CORS policy and server configuration.`);
-    const reader = response.body.getReader(); const chunks = []; let size = 0;
-    while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length; if (size > 2 * 1024 * 1024) { await reader.cancel(); throw new Error('Translation response exceeds 2 MB.'); } chunks.push(value); }
-    const body = new Uint8Array(size); let offset = 0; for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.length; }
-    const imported = validateTranslations(JSON.parse(new TextDecoder().decode(body)).translations, pageSources);
+    const imported = await requestTranslation({ endpoint, sources: pageSources, consent: $('#translation-consent').checked, signal: controller.signal });
     if (state.doc !== doc || state.page !== page) throw new Error('The document or page changed; response discarded.');
     if (translations().length + imported.length > 2000) throw new Error('At most 2,000 translations are supported per page.');
-    translations().push(...imported); await save(); renderSentences();
+    addTranslations(imported); await save(); renderSentences();
     $('#translation-status').textContent = `Added ${imported.length} translations. All links need review.`;
   } catch (error) { $('#translation-status').textContent = `Translation failed: ${error.name === 'AbortError' ? 'Request cancelled or timed out.' : error.message}`; throw error; }
   finally { clearTimeout(timeout); $('#translate-page').disabled = false; }
@@ -345,3 +354,41 @@ on('#endpoint', 'input', () => { $('#translation-consent').checked = false; });
 let resizeTimer;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (state.pdf && !$('#reader').hidden) renderPage().catch(error => status(error.message, true)); }, 200); });
 refreshLibrary().catch(() => status('Local storage is unavailable. Enable browser storage to keep notes.', true));
+
+// Source PDF → translated sentences. Selection drags still work normally.
+on('#text-layer', 'click', async event => {
+  if (!window.getSelection().isCollapsed) return;
+  const page = $('#pdf-page').getBoundingClientRect();
+  const source = hitTest(sources(), (event.clientX - page.left) / page.width, (event.clientY - page.top) / page.height);
+  if (source) { $('#search').value = ''; renderSentences(); await selectSentence(source.id, 'source'); }
+});
+on('#persist-notes', 'change', async event => {
+  persistent = event.target.checked;
+  if (state.doc) await save();
+  await refreshLibrary();
+  status(persistent ? 'Notes will be saved in this browser.' : 'Session mode: export before closing. Previously saved records are kept.');
+});
+on('#export-json', 'click', () => download(state.doc.name.replace(/\.pdf$/i, '') + '.reader.json', exportBackup(state.doc), 'application/json'));
+on('#restore-json', 'click', () => $('#backup-file').click());
+on('#backup-file', 'change', async event => {
+  const file = event.target.files[0]; event.target.value = ''; if (!file) return;
+  if (file.size > 10 * 1024 * 1024) throw new Error('Backup must be smaller than 10 MB.');
+  const doc = state.doc, engine = state.engine;
+  const restored = importBackup(JSON.parse(await file.text()), doc);
+  // Re-extract from the open PDF to verify every restored source before changing any state.
+  for (const [number, rows] of Object.entries(restored.sources)) {
+    const actual = await engine.extract(Number(number));
+    if (rows.every(source => actual.sources.some(s => s.id === source.id && s.text === source.text))) restored.sources[number] = actual.sources;
+    else {
+      const anchored = recoverSourceAnchors(rows, actual.content.items, actual.page.getViewport({ scale: 1 }));
+      if (anchored.some(source => !source.segments.length)) throw new Error('Backup source text is absent or ambiguous in this PDF. Nothing was imported.');
+      restored.sources[number] = anchored;
+    }
+  }
+  if (state.doc !== doc) throw new Error('Document changed; backup was not imported.');
+  if (!confirm(`Append ${restored.notes.length} notes and imported translations? Existing work is kept. Restored translation links will need review.`)) return;
+  Object.assign(doc.sources, restored.sources);
+  for (const [page, entries] of Object.entries(restored.translations)) (doc.translations[page] ||= []).push(...entries);
+  doc.notes.push(...restored.notes);
+  await save(); await renderPage(); status('Backup restored. Review imported translation links.');
+});

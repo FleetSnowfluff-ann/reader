@@ -32,8 +32,8 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
   const downloads = await mkdtemp(path.join(os.tmpdir(), 'parallel-downloads-'));
   const server = serve(0, '/reader/');
   await new Promise(resolve => server.on('listening', resolve));
-  const origin = `http://127.0.0.1:${server.address().port}`;
-  const appURL = origin + '/reader/';
+  const appURL = process.env.READER_URL || `http://127.0.0.1:${server.address().port}/reader/`;
+  const origin = new URL(appURL).origin;
   const binary = process.env.CHROME_BIN || execFileSync('sh', ['-c', 'command -v chromium || command -v google-chrome || command -v chromium-browser'], { encoding: 'utf8' }).trim();
   const browser = spawn(binary, ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' });
   let cdp;
@@ -67,6 +67,15 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     assert.ok(await cdp.eval(`document.querySelectorAll('.sentence-target.selected').length > 0`));
     await cdp.eval(`document.querySelector('.sentence-source').click(); document.querySelector('#translation-settings').click(); document.querySelector('#manual-translation').value='测试译文：理解原文。'; document.querySelector('#add-translation').click()`);
     await until(() => cdp.eval(`document.querySelector('#sentences').textContent.includes('测试译文') && !document.querySelector('dialog').open`));
+  });
+  await t.test('Chinese selection highlights the actual PDF; clicking PDF returns to its translation', async () => {
+    await cdp.eval(`document.querySelector('.sentence-target').click()`);
+    await until(() => cdp.eval(`document.querySelectorAll('.pdf-linked-mark').length>0`));
+    const point = await cdp.eval(`(() => {const r=document.querySelector('.pdf-linked-mark').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    await cdp.eval(`window.getSelection().removeAllRanges()`);
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, ...point });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
+    assert.ok(await cdp.eval(`document.querySelector('.sentence-target.selected')!==null`));
   });
   await t.test('highlights, annotation, editing and PDF text selection', async () => {
     await cdp.eval(`document.querySelector('.sentence-actions button').click()`);
@@ -181,5 +190,90 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await until(() => cdp.eval(`document.querySelector('#status').textContent.includes('Paper opened')`));
     assert.ok(await cdp.eval(`document.querySelector('#notes-list').textContent.includes('Edited insight')`));
   });
+  await t.test('versioned JSON backup restores notes with source verification', async () => {
+    await cdp.eval(`document.querySelector('#export-json').click()`);
+    const name = await until(async () => (await readdir(downloads)).find(n => n.endsWith('.reader.json')));
+    const backup = JSON.parse(await readFile(path.join(downloads, name), 'utf8'));
+    assert.equal(backup.schema, 'parallel-notes'); assert.equal(backup.document.id.length, 64);
+    assert.ok(!JSON.stringify(backup).includes('%PDF-'));
+    const before = await cdp.eval(`document.querySelectorAll('.note-card').length`);
+    const dom = await cdp.send('DOM.getDocument');
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector: '#backup-file' });
+    await cdp.send('DOM.setFileInputFiles', { nodeId, files: [path.join(downloads, name)] });
+    await until(() => cdp.eval(`document.querySelector('#status').textContent.includes('Backup restored')`));
+    assert.equal(await cdp.eval(`document.querySelectorAll('.note-card').length`), before * 2);
+    const bad = path.join(downloads, 'bad-backup.json'); backup.document.id = 'wrong'; await writeFile(bad, JSON.stringify(backup));
+    await cdp.send('DOM.setFileInputFiles', { nodeId, files: [bad] });
+    await until(() => cdp.eval(`document.querySelector('#status').textContent.includes('fingerprint does not match')`));
+    assert.equal(await cdp.eval(`document.querySelectorAll('.note-card').length`), before * 2);
+  });
+  await t.test('session-only reading does not persist a new note', async () => {
+    await cdp.eval(`document.querySelector('#persist-notes').checked=false; document.querySelector('#persist-notes').dispatchEvent(new Event('change'))`);
+    await cdp.eval(`document.querySelector('#note-text').value='session-only sentinel'; document.querySelector('#save-note').click()`);
+    await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('session-only sentinel')`));
+    const records = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(d=>JSON.stringify(d))`);
+    assert.ok(!records.includes('session-only sentinel'));
+    await cdp.eval(`document.querySelector('#persist-notes').checked=true; document.querySelector('#persist-notes').dispatchEvent(new Event('change'))`);
+  });
+  if (process.env.REAL_PAPERS_DIR) {
+    const corpus = JSON.parse(await readFile(new URL('./papers.json', import.meta.url), 'utf8'));
+    const report = [];
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
+    for (const paper of corpus) await t.test(`real academic paper: ${paper.name}`, async () => {
+      const dom = await cdp.send('DOM.getDocument');
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector: '#file-input' });
+      const filename = path.join(process.env.REAL_PAPERS_DIR, paper.file);
+      const original = await readFile(filename);
+      await cdp.send('DOM.setFileInputFiles', { nodeId, files: [filename] });
+      await until(() => cdp.eval(`document.querySelector('#document-name').textContent===${JSON.stringify(paper.file)} && document.querySelector('#status').textContent.includes('Paper opened')`));
+      assert.equal(await cdp.eval(`document.querySelector('#page-count').textContent`), `/ ${paper.pages}`);
+      for (const page of paper.checkPages) {
+        await cdp.eval(`document.querySelector('#page-number').value=${page};document.querySelector('#page-number').dispatchEvent(new Event('change'))`);
+        await until(() => cdp.eval(`document.querySelector('.sentence-source')?.dataset.sourceId.startsWith('p${page}-') && document.querySelectorAll('.textLayer span').length>5`));
+        const metrics = await until(() => cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(records=>{const d=records.find(d=>d.name===${JSON.stringify(paper.file)});const s=d?.sources[${page}];return s?{page:${page},sentences:s.length,columns:[...new Set(s.map(x=>x.column).filter(x=>x>=0))].length,warningCount:s.filter(x=>x.warnings?.length).length,encodingWarnings:s.filter(x=>x.warnings?.some(w=>w.startsWith('Unreliable'))).length,allAnchored:s.every(x=>x.rects.length>0),formulas:s.filter(x=>x.warnings?.some(w=>w.startsWith('Formula'))).length}:null;})`));
+        const current = metrics;
+        assert.ok(typeof current === 'object', 'Current page metrics committed');
+        assert.ok(current.sentences > 5); assert.ok(current.warningCount >= 1); assert.ok(current.allAnchored);
+        report.push({ paper: paper.file, ...current });
+        if (paper.file === 'tracemonkey.pdf' && page === 4) assert.equal(current.columns, 2);
+        if (paper.file === 'tracemonkey.pdf' && page === 8) assert.ok(current.formulas > 0);
+        if (paper.file === 'tam-review.pdf' && page === 2) assert.ok(current.encodingWarnings > 0, 'Corrupt character mapping must not pass silently');
+        if (paper.file === 'tracemonkey.pdf' && page === 4) {
+          const reference = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(r=>{const s=r.find(d=>d.name==='tracemonkey.pdf').sources[4];const target=s.find(x=>x.text.startsWith('A trace records'));return {id:target?.id,text:target?.text,column:target?.column,ordered:s.findIndex(x=>x.id===target?.id)>s.findLastIndex(x=>x.column===0)}})`);
+          assert.equal(reference.text, 'A trace records all its intermediate values in a small activation record area.');
+          assert.equal(reference.column, 1); assert.ok(reference.ordered, 'Left column must finish before right column starts');
+          await cdp.eval(`document.querySelector('[data-source-id="${reference.id}"]').click();document.querySelector('#translation-settings').click();document.querySelector('#manual-translation').value='跟踪会将其所有中间值记录在一个小型活动记录区域中。';document.querySelector('#add-translation').click()`);
+          await until(() => cdp.eval(`!document.querySelector('dialog').open && document.querySelector('#sentences').textContent.includes('跟踪会将')`));
+          await cdp.eval(`[...document.querySelectorAll('.sentence-target')].find(t=>t.textContent.startsWith('跟踪会将')).click()`);
+          assert.ok(await cdp.eval(`(() => {const page=document.querySelector('#pdf-page').getBoundingClientRect();return [...document.querySelectorAll('.pdf-linked-mark')].every(e=>e.getBoundingClientRect().left>page.left+page.width/2)})()`), 'Chinese sentence must highlight only the actual right-column source');
+        }
+        if (paper.file === 'tracemonkey.pdf' && page === 5) {
+          const boundary = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(r=>{const d=r.find(d=>d.name==='tracemonkey.pdf');return {before:d.sources[4].find(s=>s.text.includes('objects')&&s.text.endsWith('rep-')),after:d.sources[5].find(s=>s.text.startsWith('resentations are assigned'))}})`);
+          assert.ok(boundary.before && boundary.after, 'Real cross-page sentence fragments remain inspectable');
+          assert.ok(boundary.before.warnings.length && boundary.after.warnings.length);
+          assert.ok(!await cdp.eval(`document.querySelector('#sentences').textContent.includes('对象的表示形式')`), 'No automatic fabricated cross-page match');
+          const links = [{ sourceIds: [boundary.before.id, boundary.after.id], text: '在 TraceMonkey 中，对象的表示形式会被赋予一个称为对象形状的整数键。' }];
+          const file = path.join(downloads, 'reviewed-boundary.json'); await writeFile(file, JSON.stringify(links));
+          await cdp.eval(`document.querySelector('#translation-settings').click()`);
+          const dom = await cdp.send('DOM.getDocument');
+          const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: dom.root.nodeId, selector: '#translation-file' });
+          await cdp.send('DOM.setFileInputFiles', { nodeId, files: [file] });
+          await until(() => cdp.eval(`document.querySelector('#sentences').textContent.includes('对象的表示形式')`));
+          await cdp.eval(`document.querySelector('dialog').close(); [...document.querySelectorAll('.sentence-target')].find(t=>t.textContent.includes('对象的表示形式')).click()`);
+          assert.ok(await cdp.eval(`[...document.querySelectorAll('.translation-card')].find(c=>c.textContent.includes('对象的表示形式')).textContent.includes('Unreviewed')`));
+          assert.ok(await cdp.eval(`document.querySelectorAll('.pdf-linked-mark').length>0`));
+          await cdp.eval(`document.querySelector('#page-number').value=4;document.querySelector('#page-number').dispatchEvent(new Event('change'))`);
+          await until(() => cdp.eval(`document.querySelector('.sentence-source')?.dataset.sourceId.startsWith('p4-') && document.querySelector('#sentences').textContent.includes('对象的表示形式')`));
+          await cdp.eval(`document.querySelector('#page-number').value=5;document.querySelector('#page-number').dispatchEvent(new Event('change'))`);
+          await until(() => cdp.eval(`document.querySelector('.sentence-source')?.dataset.sourceId.startsWith('p5-')`));
+        }
+        await cdp.eval(`document.querySelector('.sentence-source').click()`);
+        await until(() => cdp.eval(`document.querySelectorAll('.pdf-linked-mark').length>0`));
+        const shot = await cdp.send('Page.captureScreenshot'); await writeFile(`test-results/${paper.file}-page-${page}.png`, Buffer.from(shot.data, 'base64'));
+      }
+      assert.deepEqual(await readFile(filename), original, 'Source PDF bytes must remain unchanged');
+    });
+    await writeFile('test-results/corpus-report.json', JSON.stringify(report, null, 2));
+  }
   assert.deepEqual(errors, [], 'No unhandled browser exceptions');
 });

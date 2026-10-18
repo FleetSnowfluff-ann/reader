@@ -9,3 +9,5 @@ Translation strings, filenames, and notes are rendered with `textContent`. Impor
 Git ignores PDFs, `.env` files, private directories, note exports, build output, and test output. These patterns are a safeguard, not a secret scanner. Before any commit, inspect the staged files. Never submit personal documents or real notes as bug-report attachments. Use a synthetic reproduction. Dependencies should be reviewed and upgraded regularly; a pinned version is not a guarantee against future vulnerabilities.
 
 For a suspected vulnerability, use GitHub's private vulnerability reporting if enabled. Otherwise contact the repository owner privately; do not post credentials or private papers in an issue.
+
+The browser can use session-only mode instead of persisting new data. JSON backup import requires the open PDF fingerprint, validates references and rectangles, and verifies source text against the PDF before updating state. Restored translations remain unreviewed. Extracted text with suspicious control characters is explicitly flagged and blocked from automatic translation.

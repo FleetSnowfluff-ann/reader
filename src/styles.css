@@ -897,3 +897,10 @@ dialog .consent {
 .pdf-scroll {
   scrollbar-gutter:stable;
 }
+.source-warning { font-size: 9px; line-height: 1.6; color: #876c37; background: #fbf3e0; padding: 4px 7px; margin: 4px 8px 7px; border-radius: 4px; }
+.pdf-linked-mark { position: absolute; background: #85b8a0; opacity: .35; outline: 1px solid #286a50; pointer-events: none; }
+.backup-controls { display: flex; justify-content: space-around; padding: 8px; border-bottom: 1px solid var(--line); }
+.backup-controls button { font-size: 10px; }
+.sentence-block:has(.sentence-target) .sentence-source { font-size: 13px; color: #70796d; }
+.sentence-target { font-family: "Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", SimSun, serif; font-size: 16px; line-height: 1.95; padding: 12px; }
+.privacy input { vertical-align: middle; margin-right: 5px; }

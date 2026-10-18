@@ -17,11 +17,12 @@ try { bytes = await readFile(archive); } catch {
 if (createHash('sha512').update(bytes).digest('base64') !== integrity) throw new Error('PDF.js integrity mismatch; refusing to build.');
 await writeFile(archive, bytes);
 await rm('.cache/package', { recursive: true, force: true });
-execFileSync('tar', ['-xzf', archive, '-C', '.cache']);
+const assets = ['build/pdf.mjs', 'build/pdf.worker.mjs', 'web/pdf_viewer.css', 'cmaps', 'standard_fonts', 'wasm', 'LICENSE'];
+execFileSync('tar', ['-xzf', archive, '-C', '.cache', ...assets.map(name => `package/${name}`)]);
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/vendor', { recursive: true });
 for (const name of ['index.html', 'src']) await cp(name, `dist/${name}`, { recursive: true });
-for (const name of ['build', 'web/pdf_viewer.css', 'cmaps', 'standard_fonts', 'wasm', 'LICENSE']) {
+for (const name of assets) {
   await cp(`.cache/package/${name}`, `dist/vendor/${name}`, { recursive: true });
 }
 await writeFile('dist/.nojekyll', '');

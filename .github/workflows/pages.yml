@@ -11,32 +11,52 @@ concurrency:
 jobs:
   build:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run fetch:papers
       - run: npm run test:browser
         env:
           CHROME_BIN: /usr/bin/google-chrome
+          REAL_PAPERS_DIR: .cache/papers
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Check repository Pages configuration
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5; enable Pages in repository settings first
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+  verify-production:
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Verify the deployed site in a fresh browser
+        run: npm run test:browser
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+          READER_URL: ${{ needs.deploy.outputs.url }}

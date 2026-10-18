@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Trace-based Just-in-Time Type Specialization for Dynamic Languages (PLDI 2009)",
+    "file": "tracemonkey.pdf",
+    "url": "https://raw.githubusercontent.com/mozilla/pdf.js/d14111a91c7eedf52e3d6793c56cbe74a41462f3/web/compressed.tracemonkey-pldi-09.pdf",
+    "sha256": "3662ff519e485810520552bf301d8c3b2b917fd2f83303f4965d7abed367e113",
+    "pages": 14,
+    "checkPages": [1, 3, 4, 5, 8, 12],
+    "purpose": "Two-column prose, the object-representation sentence split between pages 4 and 5, algebraic expressions on page 8, full-width performance table on page 12.",
+    "rights": "ACM 2009 paper; temporarily fetched for validation only. Never committed, included in site assets, or uploaded as a CI artifact."
+  },
+  {
+    "name": "Overview of the Technology Acceptance Model (Chuttur, 2009)",
+    "file": "tam-review.pdf",
+    "url": "https://raw.githubusercontent.com/mozilla/pdf.js/d14111a91c7eedf52e3d6793c56cbe74a41462f3/test/pdfs/TAMReview.pdf",
+    "sha256": "a6db6d2f5e4f97e1e28a5919a875a40b89e38d0229b33cc023ca4d353f3ab3ec",
+    "pages": 23,
+    "checkPages": [1, 2, 3, 10, 22],
+    "purpose": "Long-form academic prose, figures, appendix table, cross-page boundaries, and problematic character mappings.",
+    "rights": "Paper states CC Attribution-Noncommercial-No Derivative Works; original is not modified or redistributed. Temporary validation only."
+  }
+]

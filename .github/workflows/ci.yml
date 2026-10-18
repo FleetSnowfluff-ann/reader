@@ -6,22 +6,32 @@ permissions:
   contents: read
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run fetch:papers
       - run: npm run test:browser
         env:
-          CHROME_BIN: /usr/bin/google-chrome
-      - uses: actions/upload-artifact@v4
+          CHROME_BIN: ${{ runner.os == 'Windows' && 'C:\Program Files\Google\Chrome\Application\chrome.exe' || '/usr/bin/google-chrome' }}
+          REAL_PAPERS_DIR: .cache/papers
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
-          name: browser-screenshots
-          path: test-results/*.png
+          name: validation-${{ runner.os }}
+          path: |
+            test-results/welcome.png
+            test-results/reader.png
+            test-results/mobile.png
+            test-results/corpus-report.json
           if-no-files-found: ignore
