@@ -6,7 +6,9 @@ Local cloud verification: **27 unit/security tests** and **21 browser scenarios*
 
 The representative TraceMonkey page-4 paragraph is actually typeset in Chinese in its right-column source region. Tests verify its location and readable font, replacement of the source glyphs, and zero pixel changes to the other column. A protected page-8 formula remains identical in both canvases while its translation is available in continuation. Both Mirror and Reading modes share the real-paper translations.
 
-The DeepL/Turnstile/Cloudflare integration is tested with simulated responses and a transactional quota-store model. **No live provider request or Worker deployment is claimed**; account credentials have not been configured. See [activation and costs](TRANSLATION-PROXY.md) and [layout trade-offs](MIRROR-READER.md). The upgrade's GitHub/platform/production verification will be recorded after its deployment.
+Implementation `826e723` passed [Reader checks on Ubuntu 24.04 and Windows 2025](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39201781491). Each platform ran syntax checks, 27 unit tests, the integrity-verified build and all 21 browser scenarios. The Windows regression exposed different CJK wrapping; bounded 1.30–1.45 line-height adaptation now fits the representative paragraph without shrinking its 12px font. Reflowed Chinese highlights use actual Chinese spans, not stale English rectangles. Editing a note also preserves Reading Mode's scroll position.
+
+The DeepL/Turnstile/Cloudflare integration is tested with simulated responses and a transactional quota-store model. **No live provider request or Worker deployment is claimed**; account credentials have not been configured. See [activation and costs](TRANSLATION-PROXY.md) and [layout trade-offs](MIRROR-READER.md). The upgrade's production verification will be recorded after its deployment.
 
 ## Historical version 0.2 evidence
 

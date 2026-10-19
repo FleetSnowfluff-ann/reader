@@ -2,6 +2,8 @@
 
 The website is the user interface. Windows users open it in a current Chrome/Edge browser and choose a PDF. No desktop shell, model, Python environment, cloud database, or second PDF engine is shipped.
 
+Version 0.3 retains these source and storage contracts. See [Mirror/Reading projections and edit history](MIRROR-READER.md) for the new rendering modules, and [automatic translation](TRANSLATION-PROXY.md) for the optional free-only Worker, consent, cache and quota boundary. The original PDF remains authoritative in both modes; translations can change without changing annotations' source anchors.
+
 ```mermaid
 flowchart LR
   File[Local PDF bytes] --> PDF[PDF.js worker + canvas + text layer]
