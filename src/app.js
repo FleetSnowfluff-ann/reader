@@ -265,13 +265,19 @@ function renderNotes() {
 function renderHighlights() {
   const options = { locked: state.activeSourceIds, hovered: state.hoveredIds, notes: state.doc.notes.filter(n => n.page === state.page) };
   mirrorMarks($('#pdf-highlights'), sources(), options);
-  mirrorMarks($('#mirror-highlights'), sources(), options);
+  // Re-typeset runs have their own DOM geometry. Old English rectangles would
+  // paint unrelated Chinese lines. Sub-sentence PDF selections have no invented
+  // Chinese correspondence and stay on the immutable original surface only.
+  const projected = new Set(($('#mirror-page').layoutReport || []).filter(r => !r.reason).flatMap(r => r.sourceIds));
+  mirrorMarks($('#mirror-highlights'), sources().filter(s => !projected.has(s.id)), { ...options, notes: options.notes.filter(n => n.sourceId) });
   const targets = new Set(Object.values(state.doc.translations).flat().filter(t => t.sourceIds.some(id => state.activeSourceIds.includes(id))).map(t => t.id));
   document.querySelectorAll('[data-target-id]').forEach(el => { el.classList.toggle('selected', targets.has(el.dataset.targetId)); el.classList.toggle('hovered', state.hoveredTargets.includes(el.dataset.targetId));
     const entry = translations().find(t => t.id === el.dataset.targetId);
     el.classList.toggle('annotated', !!entry && state.doc.notes.some(n => n.kind === 'highlight' && entry.sourceIds.includes(n.sourceId)));
   });
-  document.querySelectorAll('[data-source-id]').forEach(el => { el.classList.toggle('hovered', state.hoveredIds.includes(el.dataset.sourceId)); el.classList.toggle('selected', state.activeSourceIds.includes(el.dataset.sourceId)); });
+  document.querySelectorAll('[data-source-id]').forEach(el => { el.classList.toggle('hovered', state.hoveredIds.includes(el.dataset.sourceId)); el.classList.toggle('selected', state.activeSourceIds.includes(el.dataset.sourceId));
+    el.classList.toggle('annotated', state.doc.notes.some(n => n.kind === 'highlight' && n.sourceId === el.dataset.sourceId));
+  });
 }
 async function goPage(value) {
   const page = Number(value);

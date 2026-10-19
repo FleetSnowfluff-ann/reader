@@ -209,6 +209,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:point.x,y:point.y});
     await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:point.x,y:point.y});
     await until(()=>cdp.eval(`document.querySelectorAll('#pdf-highlights .pdf-linked-mark').length>0`));
+    assert.ok(await cdp.eval(`(()=>{const projected=new Set(document.querySelector('#mirror-page').layoutReport.filter(r=>!r.reason).flatMap(r=>r.sourceIds));return [...document.querySelectorAll('#mirror-highlights .pdf-linked-mark')].every(e=>!projected.has(e.dataset.sourceId));})()`),'Chinese runs use their actual text geometry, never stale English rectangles');
     await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:10,y:10});
     await until(()=>cdp.eval(`document.querySelectorAll('.pdf-hover-mark').length===0`));
     assert.ok(await cdp.eval(`document.querySelectorAll('#pdf-highlights .pdf-linked-mark').length>0`));

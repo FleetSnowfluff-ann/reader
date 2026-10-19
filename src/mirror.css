@@ -20,7 +20,8 @@
 .mirror-target:focus-visible,.mirror-english:focus-visible {outline:2px solid #407da0;}
 .mirror-target.selected,.mirror-english.selected {background:#b8d3c5a6;outline:1px solid #3c7b61;}
 .mirror-target.hovered,.mirror-english.hovered,.sentence-source.hovered,.sentence-target.hovered {background:#9edbff70;outline:1px solid #3196be;}
-.mirror-target.annotated {text-decoration:underline;text-decoration-color:#c79822;text-decoration-thickness:3px;text-underline-offset:3px;}
+.mirror-target.annotated,.mirror-english.annotated {text-decoration:underline;text-decoration-color:#c79822;text-decoration-thickness:3px;text-underline-offset:3px;}
+.mirror-target.annotated:not(.selected):not(.hovered),.mirror-english.annotated:not(.selected):not(.hovered) {background:#f1cf5566;}
 .pdf-hover-mark {position:absolute;background:#74cfff;opacity:.38;outline:1px solid #218bad;pointer-events:none;}
 .pdf-linked-mark {background:#77ac91;opacity:.34;outline:1px solid #286a50;}
 .pdf-mark {background:#f1cf55;opacity:.4;pointer-events:none;}
