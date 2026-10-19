@@ -44,6 +44,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
   await new Promise(resolve => socket.addEventListener('open', resolve));
   cdp = new CDP(socket);
   const errors = [], requests = [];
+  let adapterMode = 'single', adapterRequests = 0;
   await cdp.send('Runtime.enable'); await cdp.send('Page.enable'); await cdp.send('Network.enable');
   cdp.on('Runtime.exceptionThrown', event => errors.push(event.exceptionDetails.exception?.description || event.exceptionDetails.text));
   cdp.on('Network.requestWillBeSent', event => requests.push(event.request.url));
@@ -83,7 +84,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     assert.ok(await cdp.eval(`document.querySelectorAll('.pdf-mark').length>0`), 'Sentence highlighting immediately marks the PDF');
     await cdp.eval(`document.querySelector('#note-text').value='A persistent research question.'; document.querySelector('#save-note').click()`);
     await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('A persistent research question.')`));
-    await cdp.eval(`[...document.querySelectorAll('.note-card button')].find(b=>b.textContent==='Edit').click()`);
+    await cdp.eval(`[...document.querySelectorAll('.note-card button')].find(b=>b.textContent==='Edit').click(); document.querySelector('#edit-text').value='Edited insight'; document.querySelector('#save-edit').click()`);
     await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('Edited insight')`));
     await cdp.eval(`(() => {const el=document.querySelector('.textLayer span'); const range=document.createRange(); range.selectNodeContents(el); const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range); document.querySelector('#highlight-selection').click();})()`);
     await until(() => cdp.eval(`document.querySelectorAll('.pdf-mark').length>0`));
@@ -102,7 +103,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await cdp.send('Page.reload');
     await until(() => cdp.eval(`document.querySelector('#library')?.textContent.includes('Reading Across Languages')`));
     await cdp.eval(`document.querySelector('#demo').click()`);
-    await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('Edited insight') && document.querySelector('#sentences').textContent.includes('测试译文')`));
+    await until(() => cdp.eval(`document.querySelector('#notes-list').textContent.includes('Edited insight') && document.querySelector('#sentences').textContent.includes('测试译文')`)).catch(async error => { console.log('Reload diagnostics', await cdp.eval(`({notes:document.querySelector('#notes-list').textContent,translations:[...document.querySelectorAll('.sentence-target')].map(n=>n.textContent)})`)); throw error; });
     assert.ok(await cdp.eval(`document.querySelectorAll('.pdf-mark').length>0`));
     const records = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(d=>JSON.stringify(d))`);
     assert.ok(!records.includes('%PDF-'));
@@ -150,11 +151,12 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
         await cdp.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 204, responseHeaders: [{ name: 'Access-Control-Allow-Origin', value: origin }, { name: 'Access-Control-Allow-Methods', value: 'POST' }, { name: 'Access-Control-Allow-Headers', value: 'content-type' }] }); return;
       }
       sent = JSON.parse(event.request.postData);
-      const result = { translations: [{ text: '<img src=x onerror=alert(1)> 未审核的译文', sourceIds: [sent.sentences[0].id], confirmed: true }] };
+      adapterRequests++;
+      const result = { translations: adapterMode === 'all' ? sent.sentences.map(s=>({text:'测试服务译文：'+s.id,sourceIds:[s.id]})) : [{ text: '<img src=x onerror=alert(1)> 未审核的译文', sourceIds: [sent.sentences[0].id], confirmed: true }] };
       await cdp.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Access-Control-Allow-Origin', value: origin }], body: Buffer.from(JSON.stringify(result)).toString('base64') });
     });
     await cdp.eval(`document.querySelector('#translation-consent').checked=true; document.querySelector('#translate-page').click()`);
-    await until(() => cdp.eval(`document.querySelector('#translation-status').textContent.includes('Added 1 translations')`));
+    await until(() => cdp.eval(`document.querySelector('#translation-status').textContent.includes('Translation complete:')`));
     assert.deepEqual(Object.keys(sent).sort(), ['sentences', 'sourceLanguage', 'targetLanguage']);
     assert.deepEqual(Object.keys(sent.sentences[0]).sort(), ['id', 'text']);
     await cdp.eval(`document.querySelector('dialog').close()`);
@@ -190,6 +192,99 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await cdp.send('DOM.setFileInputFiles', { nodeId, files: [valid] });
     await until(() => cdp.eval(`document.querySelector('#status').textContent.includes('Paper opened')`));
     assert.ok(await cdp.eval(`document.querySelector('#notes-list').textContent.includes('Edited insight')`));
+  });
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1600, height: 1100, deviceScaleFactor: 1, mobile: false });
+  await delay(300);
+  await t.test('Mirror has equal paper geometry, instant reversible hover and locked selection', async () => {
+    await cdp.eval(`document.querySelector('button[data-view="split"]').click()`);
+    await until(() => cdp.eval(`document.querySelector('#mirror-page').offsetWidth>0 && document.querySelector('#mirror-content .mirror-target')!==null`)).catch(async e=>{console.log('Mirror diagnostics',await cdp.eval(`({status:document.querySelector('#mirror-status').textContent,reasons:[...document.querySelectorAll('.continuation-label')].map(n=>n.textContent)})`));throw e;});
+    const dimensions = await cdp.eval(`['#pdf-page','#mirror-page'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.width,r.height]})`);
+    assert.deepEqual(dimensions[0],dimensions[1]);
+    await cdp.eval(`window.getSelection().removeAllRanges();document.querySelector('#clear-selection').click();document.querySelector('#pdf-scroll').scrollTop=0;document.querySelector('#mirror-scroll').scrollTop=0`);
+    const point=await cdp.eval(`(()=>{const el=document.querySelector('#mirror-content .mirror-target');el.scrollIntoView({block:'center'});const r=el.getClientRects()[0];return {x:r.x+5,y:r.y+r.height/2,id:el.dataset.targetId};})()`);
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
+    await until(()=>cdp.eval(`document.querySelectorAll('#pdf-highlights .pdf-hover-mark').length>0`));
+    assert.equal(await cdp.eval(`document.querySelectorAll('#pdf-highlights .pdf-linked-mark').length`),0);
+    await cdp.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,x:point.x,y:point.y});
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,x:point.x,y:point.y});
+    await until(()=>cdp.eval(`document.querySelectorAll('#pdf-highlights .pdf-linked-mark').length>0`));
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:10,y:10});
+    await until(()=>cdp.eval(`document.querySelectorAll('.pdf-hover-mark').length===0`));
+    assert.ok(await cdp.eval(`document.querySelectorAll('#pdf-highlights .pdf-linked-mark').length>0`));
+    const pdfPoint=await cdp.eval(`(()=>{const r=document.querySelector('#pdf-highlights .pdf-linked-mark').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()`);
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',...pdfPoint});
+    await until(()=>cdp.eval(`document.querySelectorAll('#mirror-content .mirror-target.hovered').length>0`));
+    await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:10,y:10});
+    const before=await cdp.eval(`document.querySelector('#selection-label').textContent`);
+    await cdp.eval(`document.querySelector('button[data-view="text"]').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#sentences').checkVisibility()`));
+    assert.equal(await cdp.eval(`document.querySelector('#selection-label').textContent`),before);
+    assert.ok(await cdp.eval(`document.querySelector('.sentence-target.selected')!==null`));
+    await cdp.eval(`document.querySelector('button[data-view="split"]').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#mirror-scroll').checkVisibility()`));
+  });
+  await t.test('annotation removal, Ctrl+Z and Ctrl+Shift+Z survive page navigation',async()=>{
+    await cdp.eval(`document.querySelector('.sentence-source').click();document.querySelector('#note-text').value='Undo across pages';document.querySelector('#save-note').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#notes-list').textContent.includes('Undo across pages')`));
+    await cdp.eval(`document.querySelector('#next').click()`);
+    await until(()=>cdp.eval(`document.querySelector('.sentence-source')?.dataset.sourceId.startsWith('p2-')`));
+    await cdp.eval(`document.activeElement.blur()`);
+    await cdp.send('Input.dispatchKeyEvent',{type:'keyDown',key:'z',code:'KeyZ',modifiers:2});await cdp.send('Input.dispatchKeyEvent',{type:'keyUp',key:'z',code:'KeyZ',modifiers:2});
+    await until(()=>cdp.eval(`!document.querySelector('#notes-list').textContent.includes('Undo across pages')`));
+    assert.equal(await cdp.eval(`document.querySelector('#page-number').value`),'2');
+    await cdp.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Z',code:'KeyZ',modifiers:10});await cdp.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Z',code:'KeyZ',modifiers:10});
+    await until(()=>cdp.eval(`document.querySelector('#notes-list').textContent.includes('Undo across pages')`));
+    await cdp.eval(`[...document.querySelectorAll('.note-card')].find(n=>n.textContent.includes('Undo across pages')).querySelector('.danger').click()`);
+    await until(()=>cdp.eval(`!document.querySelector('#notes-list').textContent.includes('Undo across pages')`));
+    await cdp.eval(`document.querySelector('#undo').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#notes-list').textContent.includes('Undo across pages')`));
+    await cdp.eval(`document.querySelector('#previous').click()`);
+    await until(()=>cdp.eval(`document.querySelector('.sentence-source')?.dataset.sourceId.startsWith('p1-')`));
+  });
+  await t.test('direct translation editor and Undo preserve source notes and alignment',async()=>{
+    await cdp.eval(`document.querySelector('.sentence-target').click();document.querySelector('#edit-selected-translation').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#edit-dialog').open`));
+    const before=await cdp.eval(`({text:document.querySelector('#edit-text').value,ids:document.querySelector('#edit-source-ids').value,notes:document.querySelectorAll('.note-card').length})`);
+    await cdp.eval(`document.querySelector('#edit-text').value='经过人工修改的译文。';document.querySelector('#edit-source-ids').value='p1-s2';document.querySelector('#edit-verified').checked=false;document.querySelector('#save-edit').click()`);
+    await until(()=>cdp.eval(`!document.querySelector('#edit-dialog').open && document.querySelector('#sentences').textContent.includes('经过人工修改')`));
+    assert.equal(await cdp.eval(`document.querySelectorAll('.note-card').length`),before.notes);
+    await cdp.eval(`document.querySelector('#undo').click()`);
+    await until(()=>cdp.eval(`!document.querySelector('#sentences').textContent.includes('经过人工修改')`));
+    assert.ok(await cdp.eval(`document.querySelector('#sentences').textContent.includes(${JSON.stringify(before.text)})`));
+  });
+  await t.test('overflow uses a readable continuation, and translated text remains independently selectable',async()=>{
+    await cdp.eval(`document.querySelector('.sentence-source').click();document.querySelector('#translation-settings').click();document.querySelector('#manual-translation').value='这段译文需要保留清晰的字号，不应挤进原来狭小的区域。'.repeat(50);document.querySelector('#add-translation').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#mirror-continuation').textContent.includes('这段译文需要')`));
+    assert.ok(await cdp.eval(`(()=>{const e=[...document.querySelectorAll('#mirror-continuation .mirror-target')].find(e=>e.textContent.includes('这段译文'));return e.textContent.length>1000&&parseFloat(getComputedStyle(e).fontSize)>=16;})()`));
+    const selection=await cdp.eval(`(()=>{const e=document.querySelector('#mirror-content .mirror-target');const range=document.createRange();range.selectNodeContents(e);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);return {text:selection.toString(),inOriginal:document.querySelector('#text-layer').contains(selection.anchorNode)};})()`);
+    assert.ok(selection.text.length>0);assert.equal(selection.inOriginal,false);
+    await cdp.eval(`getSelection().removeAllRanges();document.querySelector('#undo').click()`);
+    await until(()=>cdp.eval(`!document.querySelector('#mirror-continuation').textContent.includes('这段译文需要')`));
+    await cdp.eval(`document.querySelector('#pdf-scroll').scrollTop=100`);
+    await delay(100);
+    assert.ok(await cdp.eval(`Math.abs(document.querySelector('#pdf-scroll').scrollTop-document.querySelector('#mirror-scroll').scrollTop)<2`));
+  });
+  await t.test('whole-paper translation enforces consent and budget, reports progress, resumes from cache',async()=>{
+    adapterMode='all';await cdp.send('Fetch.enable',{patterns:[{urlPattern:'https://adapter.example/*'}]});
+    const before=adapterRequests;
+    await cdp.eval(`document.querySelector('#translation-settings').click();document.querySelector('#endpoint').value='https://adapter.example/translate';document.querySelector('#translation-consent').checked=false;document.querySelector('#translate-paper').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#status').textContent.includes('Consent is required')`));assert.equal(adapterRequests,before);
+    await cdp.eval(`document.querySelector('#translation-consent').checked=true;document.querySelector('#translation-limit').value='100';document.querySelector('#translate-paper').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#translation-status').textContent.includes('No text was sent') && !document.querySelector('#translate-paper').disabled`));assert.equal(adapterRequests,before);
+    const page=await cdp.eval(`document.querySelector('#page-number').value`);
+    await cdp.eval(`document.querySelector('#translation-limit').value='20000';document.querySelector('#translate-paper').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#translation-status').textContent.includes('Translation complete: 2 pages') && !document.querySelector('#translate-paper').disabled`));
+    assert.equal(await cdp.eval(`document.querySelector('#page-number').value`),page);
+    assert.equal(await cdp.eval(`document.querySelector('#translation-progress').value`),2);
+    assert.ok(await cdp.eval(`document.querySelector('#sentences').textContent.includes('测试译文')`),'Manual text is never overwritten');
+    const after=adapterRequests;assert.ok(after>before);
+    await cdp.eval(`document.querySelector('#translate-paper').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#translation-status').textContent.includes('0 characters sent') && !document.querySelector('#translate-paper').disabled`));assert.equal(adapterRequests,after);
+    await cdp.eval(`document.querySelector('#translation-dialog').close();[...document.querySelectorAll('.translation-card')].find(c=>c.textContent.includes('测试服务译文')).querySelectorAll('.review-button')[4].click()`);
+    await delay(100);
+    await cdp.eval(`document.querySelector('#translation-settings').click();document.querySelector('#translate-paper').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#translation-status').textContent.includes('0 characters sent') && !document.querySelector('#translate-paper').disabled`));assert.equal(adapterRequests,after);
+    await cdp.eval(`document.querySelector('#translation-dialog').close()`);await cdp.send('Fetch.disable');adapterMode='single';
   });
   await t.test('versioned JSON backup restores notes with source verification', async () => {
     await cdp.eval(`document.querySelector('#export-json').click()`);
@@ -249,6 +344,33 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
           await until(() => cdp.eval(`!document.querySelector('dialog').open && document.querySelector('#sentences').textContent.includes('跟踪会将')`));
           await cdp.eval(`[...document.querySelectorAll('.sentence-target')].find(t=>t.textContent.startsWith('跟踪会将')).click()`);
           assert.ok(await cdp.eval(`(() => {const page=document.querySelector('#pdf-page').getBoundingClientRect();return [...document.querySelectorAll('.pdf-linked-mark')].every(e=>e.getBoundingClientRect().left>page.left+page.width/2)})()`), 'Chinese sentence must highlight only the actual right-column source');
+          // Complete one representative right-column paragraph before scaling.
+          // These are reviewed test translations of a short excerpt, not provider output.
+          const paragraph = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(r=>{const sources=r.find(d=>d.name==='tracemonkey.pdf').sources[4];return ['To make variable accesses','Thus, the trace can read','When the trace exits'].map(prefix=>sources.filter(s=>s.text.startsWith(prefix)).map(s=>s.id));})`);
+          assert.ok(paragraph.every(ids=>ids.length===1), 'Each reviewed excerpt has exactly one actual source sentence');
+          const chinese=['为加快跟踪中的变量访问，系统会将局部变量和全局变量拆箱，复制到该活动记录区中。','因此，跟踪可以通过简单的加载和存储操作读写这些变量，无需依赖解释器使用的装箱机制。','退出跟踪时，虚拟机会将这些原生存储中的值重新装箱，并复制回解释器的数据结构。'];
+          const file=path.join(downloads,'representative-links.json');await writeFile(file,JSON.stringify(paragraph.map((ids,i)=>({sourceIds:ids,text:chinese[i]}))));
+          await cdp.eval(`document.querySelector('#translation-settings').click()`);
+          const dom=await cdp.send('DOM.getDocument');const input=await cdp.send('DOM.querySelector',{nodeId:dom.root.nodeId,selector:'#translation-file'});
+          await cdp.send('DOM.setFileInputFiles',{nodeId:input.nodeId,files:[file]});
+          await until(()=>cdp.eval(`document.querySelector('#sentences').textContent.includes('为加快跟踪')`));
+          await cdp.eval(`document.querySelector('#translation-dialog').close()`);
+          await until(()=>cdp.eval(`document.querySelector('#mirror-content').textContent.includes('为加快跟踪')`));
+          assert.ok(await cdp.eval(`(()=>{const p=document.querySelector('#mirror-page').getBoundingClientRect();const e=[...document.querySelectorAll('#mirror-content .mirror-target')].find(e=>e.textContent.startsWith('跟踪会将'));const r=e.getBoundingClientRect();return r.left>p.left+p.width/2&&r.top>=p.top&&parseFloat(getComputedStyle(e).fontSize)>=12;})()`),'Reviewed paragraph must actually fit on the Chinese paper in the right column');
+          const retained=await cdp.eval(`(()=>{const a=document.querySelector('#pdf-canvas'),b=document.querySelector('#mirror-canvas');const left=a.getContext('2d').getImageData(0,0,a.width,a.height).data,right=b.getContext('2d').getImageData(0,0,b.width,b.height).data;let changedLeft=0,changedRight=0;for(let y=0;y<a.height;y++)for(let x=0;x<a.width;x++){const i=(y*a.width+x)*4;if(left[i]!==right[i]||left[i+1]!==right[i+1]||left[i+2]!==right[i+2]){if(x<a.width/2)changedLeft++;else changedRight++;}}return{changedLeft,changedRight};})()`);
+          assert.equal(retained.changedLeft,0,'Other column pixels remain exactly unchanged');assert.ok(retained.changedRight>0,'Source glyphs are actually replaced, not just a duplicate screenshot');
+          await cdp.eval(`document.querySelector('button[data-view="text"]').click()`);
+          await until(()=>cdp.eval(`document.querySelector('#sentences').checkVisibility()&&document.querySelector('#sentences').textContent.includes('为加快跟踪')`));
+          assert.equal(await cdp.eval(`document.querySelector('#page-number').value`),'4');
+          await cdp.eval(`document.querySelector('button[data-view="split"]').click()`);
+          await until(()=>cdp.eval(`document.querySelector('#mirror-content').textContent.includes('为加快跟踪')`));
+        }
+        if (paper.file === 'tracemonkey.pdf' && page === 8) {
+          const formulaId=await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(r=>r.find(d=>d.name==='tracemonkey.pdf').sources[8].find(s=>s.warnings.some(w=>w.startsWith('Formula'))).id)`);
+          await cdp.eval(`document.querySelector('#sentences [data-source-id="${formulaId}"]').click();document.querySelector('#translation-settings').click();document.querySelector('#manual-translation').value='公式区域测试注释：请以原始公式为准。';document.querySelector('#add-translation').click()`);
+          await until(()=>cdp.eval(`document.querySelector('#mirror-continuation').textContent.includes('公式区域测试')`));
+          assert.ok(await cdp.eval(`document.querySelector('#mirror-continuation').textContent.includes('Protected')`));
+          assert.ok(await cdp.eval(`document.querySelector('#pdf-canvas').toDataURL()===document.querySelector('#mirror-canvas').toDataURL()`),'Protected formula/figure canvas is an unchanged copy of the source');
         }
         if (paper.file === 'tracemonkey.pdf' && page === 5) {
           const boundary = await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(r=>{const d=r.find(d=>d.name==='tracemonkey.pdf');return {before:d.sources[4].find(s=>s.text.includes('objects')&&s.text.endsWith('rep-')),after:d.sources[5].find(s=>s.text.startsWith('resentations are assigned'))}})`);

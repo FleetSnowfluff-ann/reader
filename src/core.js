@@ -23,7 +23,7 @@ export function validateTranslations(input, sources) {
   return input.map((entry, i) => {
     if (!entry || typeof entry.text !== 'string' || !entry.text.trim() || entry.text.length > 20000) throw new Error(`Entry ${i + 1}: invalid translation text.`);
     if (!Array.isArray(entry.sourceIds) || entry.sourceIds.some(id => typeof id !== 'string' || !ids.has(id))) throw new Error(`Entry ${i + 1}: unknown source sentence ID.`);
-    return { id: crypto.randomUUID(), text: entry.text.trim(), sourceIds: [...new Set(entry.sourceIds)], confirmed: false };
+    return { id: crypto.randomUUID(), text: entry.text.trim(), sourceIds: [...new Set(entry.sourceIds)], confirmed: false, provenance: { kind: 'imported' } };
   });
 }
 
@@ -43,6 +43,6 @@ export function validateEndpoint(value) {
 const escapeMD = text => String(text).replace(/[\\`*_{}\[\]<>#!|]/g, '\\$&');
 export function markdown(doc, notes) {
   return `# ${escapeMD(doc.name)}\n\nPDF SHA-256: ${escapeMD(doc.id || 'unavailable')}\n\nExported from Parallel. PDFs and notes stay in your browser unless you explicitly export or send text for translation.\n\n` +
-    notes.map(n => `## Page ${n.page} · ${n.kind === 'highlight' ? 'Highlight' : 'Note'}\n\nSource: ${escapeMD(n.sourceIds?.length ? n.sourceIds.join(', ') : n.sourceId || 'page / PDF selection')}\n\n${n.quote ? '> ' + escapeMD(n.quote).replace(/\n/g, '\n> ') + '\n\n' : ''}${escapeMD(n.text || '')}\n`).join('\n') +
-    '\n## Bilingual reading\n\n' + Object.entries(doc.translations || {}).map(([page, items]) => items.map(t => `### Page ${page} · ${t.confirmed ? 'User-confirmed' : 'Uncertain / unreviewed'}\n\nSource IDs: ${t.sourceIds.map(escapeMD).join(', ') || 'Unaligned'}\n\n${Object.values(doc.sources || {}).flat().filter(s => t.sourceIds.includes(s.id)).map(s => `[page ${s.page}] ${escapeMD(s.text)}`).join(' ')}\n\n${escapeMD(t.text)}\n`).join('\n')).join('\n');
+    notes.map(n => `## Page ${n.page} · ${n.kind === 'highlight' ? 'Highlight' : 'Note'}\n\nSource: ${escapeMD(n.sourceIds?.length ? n.sourceIds.join(', ') : n.sourceId || 'page / PDF selection')}\n\n${n.quote ? '> ' + escapeMD(n.quote).replace(/\n/g, '\n> ') + '\n\n' : ''}${escapeMD(n.text || '')}\n\n${n.translation ? '**Chinese at annotation time:** ' + escapeMD(n.translation) + '\n\n' : ''}[Open original PDF](<./${encodeURIComponent(doc.name)}#page=${n.page}>) · SHA-256: ${escapeMD(n.fingerprint || doc.id || 'unavailable')}\n${n.id ? '^reader-' + n.id.replace(/[^a-zA-Z0-9-]/g, '') + '\n' : ''}`).join('\n') +
+    '\n## Bilingual reading\n\n' + Object.entries(doc.translations || {}).map(([page, items]) => items.map(t => `### Page ${page} · ${t.confirmed ? 'User-confirmed' : 'Uncertain / unreviewed'}\n\nProvenance: ${escapeMD(t.provenance?.kind || 'legacy / unknown')}\n\nSource IDs: ${t.sourceIds.map(escapeMD).join(', ') || 'Unaligned'}\n\n${Object.values(doc.sources || {}).flat().filter(s => t.sourceIds.includes(s.id)).map(s => `[page ${s.page}] ${escapeMD(s.text)}`).join(' ')}\n\n${escapeMD(t.text)}\n`).join('\n')).join('\n');
 }

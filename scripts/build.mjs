@@ -22,6 +22,11 @@ execFileSync('tar', ['-xzf', archive, '-C', '.cache', ...assets.map(name => `pac
 await rm('dist', { recursive: true, force: true });
 await mkdir('dist/vendor', { recursive: true });
 for (const name of ['index.html', 'src']) await cp(name, `dist/${name}`, { recursive: true });
+const endpoint = process.env.TRANSLATION_ENDPOINT || '';
+const turnstileSiteKey = process.env.TURNSTILE_SITE_KEY || '';
+if (endpoint && (!/^https:\/\//.test(endpoint) || new URL(endpoint).username || new URL(endpoint).password || new URL(endpoint).search || new URL(endpoint).hash)) throw new Error('Invalid public translation endpoint');
+if (!!endpoint !== !!turnstileSiteKey) throw new Error('Set both public translation endpoint and Turnstile site key, or neither');
+await writeFile('dist/src/config.js', 'export const service = ' + JSON.stringify({ endpoint, turnstileSiteKey }) + ';\n');
 for (const name of assets) {
   await cp(`.cache/package/${name}`, `dist/vendor/${name}`, { recursive: true });
 }

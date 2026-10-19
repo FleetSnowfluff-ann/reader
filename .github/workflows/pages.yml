@@ -21,6 +21,9 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+        env:
+          TRANSLATION_ENDPOINT: ${{ vars.TRANSLATION_ENDPOINT }}
+          TURNSTILE_SITE_KEY: ${{ vars.TURNSTILE_SITE_KEY }}
       - run: npm run fetch:papers
       - run: npm run test:browser
         env:

@@ -1,13 +1,13 @@
 {
   "name": "parallel-paper-reader",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "node scripts/serve.mjs",
-    "test": "node --test tests/core.test.mjs tests/modules.test.mjs",
+    "test": "node --test tests/core.test.mjs tests/modules.test.mjs tests/upgrade.test.mjs tests/worker.test.mjs",
     "test:browser": "node --test --test-reporter=spec --test-reporter=./scripts/github-reporter.mjs --test-reporter-destination=stdout --test-reporter-destination=stdout tests/browser.test.mjs",
     "fetch:papers": "node scripts/fetch-papers.mjs",
     "check": "node scripts/check.mjs"

@@ -2,17 +2,21 @@
 
 A private, browser-based English–Chinese academic paper reader. Open a PDF, read the original alongside linked translations, highlight passages, and keep a portable trail of research notes.
 
-**No account, paid service, database server, or local package installation is required.** The app is a static site designed for GitHub Pages and current Chrome/Edge on Windows; nothing needs to be installed on your PC. Translation is pluggable; an AI provider is not bundled or required.
+**No account, paid service, database server, or local package installation is required.** The app is a static site designed for GitHub Pages and current Chrome/Edge on Windows; nothing needs to be installed on your PC. Manual reading requires no provider. Optional automatic translation uses the documented free-only DeepL proxy.
+
+**Version 0.3 adds Mirror Mode**: original and Chinese paper surfaces with shared navigation, blue hover previews, green locked sentences, gold permanent highlights, and a comfortable Reading Mode. Undo/Redo, direct annotation editing, stable source quotations and Obsidian-friendly exports retain the existing data format.
+
+**Automatic translation is implemented but not activated yet.** The page/paper queue supports consent, progress, cancellation, caching and cost limits. Its DeepL API Free proxy requires the repository owner's free-account configuration; no credential or paid service has been provisioned. [Activation and cost guide](docs/TRANSLATION-PROXY.md) · [Mirror design and limitations](docs/MIRROR-READER.md).
 
 See the seven-project [upstream research](docs/RESEARCH.md), [architecture](docs/ARCHITECTURE.md), and [validation report](docs/VALIDATION.md).
 
 ## Read a paper
 
 1. Choose **Open PDF / 打开文献**, drag a PDF onto the reading desk, or try the included original sample paper.
-2. Navigate pages, zoom, and switch between PDF, bilingual, and text views. The PDF has a selectable text layer.
-3. Click a sentence directly in the PDF or a Chinese translation to highlight and locate its linked counterpart. The source highlight uses character ranges in PDF.js’s text layer, not a nearest-text guess. Multiple source sentences may link to one translation. Extracted reading order is approximate; always check the original for columns, equations, footnotes, and tables.
+2. Navigate pages, zoom, and switch between Mirror (default), Reading, and original PDF views. The PDF has a selectable text layer.
+3. Hover a sentence for a temporary blue counterpart preview. Click to lock it in green; moving away clears only the preview. The source highlight uses character ranges in PDF.js’s text layer, not a nearest-text guess. Multiple source sentences may link to one translation. Extracted reading order is approximate; always check the original for columns, equations, footnotes, and tables.
 4. Use **＋ 中文** to enter a translation for a selected English sentence. Alternatively import explicit sentence links or use your own translation adapter.
-5. Highlight an English sentence or select text directly on the PDF and choose **Highlight selection**. Add a note, edit it, or jump back to its page.
+5. Use **Highlight** to toggle a permanent gold sentence mark, or select PDF text and choose **Highlight selection**. Remove highlights from the shared toolbar or Notes; edit notes directly. **Ctrl+Z / Ctrl+Shift+Z** undo/redo annotations and manual alignment edits across page navigation. Undo history lasts for this browser session.
 6. Export notes, quotes, PDF fingerprints, source IDs, and bilingual pairs with **Export Markdown**. Use **JSON backup** for structured restoration; open the same PDF and choose **Restore**. Imports are validated against the actual PDF and append without deleting existing notes. Re-importing the same backup appends another copy; review before confirming.
 
 PDF bytes are held in memory, not saved in the repository or uploaded. By default, notes, extracted page text, document names, and translations are saved in this browser's IndexedDB, keyed by a SHA-256 fingerprint of the file. Reopen the same PDF to recover them. The recent-paper list does not store your PDF. Browser data clearing, private browsing, a different device, or a different site origin can remove or isolate saved notes; export important work first. **Forget** deletes a paper's local notes and translations. Uncheck **Save notes on this device** for session-only reading; export before closing the tab. Previously saved records remain until explicitly forgotten. Personal exports and PDFs are ignored by Git as an additional safeguard.
@@ -37,7 +41,7 @@ Imports are owned by the current page and may explicitly reference IDs from othe
 
 No API key is accepted or stored by this frontend. An optional HTTPS adapter keeps provider credentials on **your server**. Free/manual imports remain fully functional without one. This project does not provision a server, select a paid provider, or include a browser-side secret.
 
-Set an HTTPS endpoint in **Translation**, check the consent box, then press **Translate current page**. Only that page's sentence IDs and extracted text are sent; the app does not include the PDF, document name, notes, or cookies. The endpoint is not persisted. Changing the endpoint clears consent. Requests time out after 30 seconds and redirects are rejected. Pages with detected corrupt character mappings are blocked from automatic translation; use the preserved original and reviewed manual translations. You are responsible for trusting the endpoint and its retention policy.
+Set an HTTPS endpoint in **Translation**, check the consent box, then press **Translate current page**. Only the selected page/paper sentence IDs and extracted text are sent; the app does not include the PDF, document name, notes, or cookies. The custom endpoint is not persisted. A configured built-in endpoint and its public Turnstile site key are deployed as public configuration; neither is a provider credential. Changing the endpoint clears consent. Requests are bounded and redirects are rejected. The built-in proxy applies bounded retries and atomic quotas; the reader shows progress, supports stopping, and retains completed batches. Browser cache and existing translations avoid repeated provider calls. Pages with detected corrupt character mappings are blocked from automatic translation; use the preserved original and reviewed manual translations. You are responsible for trusting the endpoint and its retention policy.
 
 Request: `POST /translate`, `Content-Type: application/json`:
 
@@ -71,9 +75,9 @@ To publish after review:
 2. Merge the reviewed implementation PR into `main`.
 3. The **Deploy reader to GitHub Pages** workflow repeats validation and deploys only after it passes. Its final job opens the deployed URL in a fresh real browser and exercises the reader, notes, imports and exports. Approve the `github-pages` environment deployment if your repository requires it.
 
-Live website: **https://fleetsnowfluff-ann.github.io/reader/**. [Deployment and fresh-browser production verification passed](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486413) for implementation `c7dccc0` on 2026-10-19 (Asia/Shanghai). [Ubuntu and Windows Chrome checks also passed](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486442), including the real-paper corpus. See the [validation report](docs/VALIDATION.md) for scope and limitations. Relative asset URLs support the `/reader/` project subpath. The application uses no paid service.
+Live website: **https://fleetsnowfluff-ann.github.io/reader/**. Initial-release evidence: [deployment and fresh-browser production verification passed](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486413) for implementation `c7dccc0` on 2026-10-19 (Asia/Shanghai). [Ubuntu and Windows Chrome checks also passed](https://github.com/FleetSnowfluff-ann/reader/actions/runs/39177486442), including the real-paper corpus. See the [validation report](docs/VALIDATION.md) for scope and limitations. Relative asset URLs support the `/reader/` project subpath. The application uses no paid service.
 
-No provider keys, Pages tokens, or personal PDFs belong in Actions secrets or artifacts for this static workflow. GitHub's built-in Pages OIDC token is used for deployment, with write permissions limited to the deployment job.
+The static Pages workflow needs no provider key or personal PDF. Optional proxy deployment uses separately scoped GitHub secrets as described in the activation guide; those values never enter the static build or artifacts. GitHub's built-in Pages OIDC token is used for deployment, with write permissions limited to the deployment job.
 
 ## Optional cloud verification
 
@@ -90,7 +94,7 @@ REAL_PAPERS_DIR=.cache/papers npm run test:browser
 npm start
 ```
 
-The build downloads exactly PDF.js **5.4.624** from the npm registry, verifies its pinned SHA-512, and bundles its modules, worker, fonts, CMaps, WASM, and Apache-2.0 license into ignored `dist/`. Cached archives are reverified on every build. There is no runtime CDN dependency. The app is served on port 4173; `PORT` changes that port. `CHROME_BIN` can select an existing Chrome executable for browser tests. The server binds to loopback and is for development only.
+The build downloads exactly PDF.js **5.4.624** from the npm registry, verifies its pinned SHA-512, and bundles its modules, worker, fonts, CMaps, WASM, and Apache-2.0 license into ignored `dist/`. Cached archives are reverified on every build. PDF reading has no runtime CDN dependency. Optional proxy translation loads Cloudflare Turnstile only after consent. The app is served on port 4173; `PORT` changes that port. `CHROME_BIN` can select an existing Chrome executable for browser tests. The server binds to loopback and is for development only.
 
 ## Architecture
 
@@ -100,7 +104,10 @@ The build downloads exactly PDF.js **5.4.624** from the npm registry, verifies i
 | `src/pdf.js` | Single PDF.js engine, rendering cancellation, text-layer character rectangles |
 | `src/extraction.js` | Column/paragraph heuristics, stable source provenance, ambiguity warnings and legacy anchors |
 | `src/alignment.js` | Explicit source links, cross-page references and coordinate hit testing |
-| `src/translation.js` | Consent-based, credential-free adapter transport with validation and limits |
+| `src/translation.js`, `src/translation-job.js` | Consent-based transport, batching, cache, progress and cancellation |
+| `src/layout.js`, `src/mirror.js` | Conservative geometric typesetting and protected-ink checks |
+| `src/history.js` | Source-independent annotation and translation edit history |
+| `worker/index.js` | Free-only server proxy, Turnstile validation and atomic quotas |
 | `src/annotations.js` | Annotation records and versioned JSON backup validation |
 | `src/core.js` | Text/link validation, endpoint validation, Markdown serialization |
 | `src/storage.js` | IndexedDB transactions; writes resolve only when committed |

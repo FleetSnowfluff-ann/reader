@@ -1,4 +1,14 @@
-# Phase 1 validation
+# Reader validation
+
+## Version 0.3 upgrade
+
+Local cloud verification: **27 unit/security tests** and **21 browser scenarios** (22 runner tests including the parent), including two real academic papers. The browser suite adds genuine pointer hover in both directions, click lock, independent text selection, matched page geometry, scroll synchronization, mode switching, overflow continuation, cross-page keyboard undo/redo, direct editing, source-preserving translation changes, and whole-paper progress/budget/cache behavior.
+
+The representative TraceMonkey page-4 paragraph is actually typeset in Chinese in its right-column source region. Tests verify its location and readable font, replacement of the source glyphs, and zero pixel changes to the other column. A protected page-8 formula remains identical in both canvases while its translation is available in continuation. Both Mirror and Reading modes share the real-paper translations.
+
+The DeepL/Turnstile/Cloudflare integration is tested with simulated responses and a transactional quota-store model. **No live provider request or Worker deployment is claimed**; account credentials have not been configured. See [activation and costs](TRANSLATION-PROXY.md) and [layout trade-offs](MIRROR-READER.md). The upgrade's GitHub/platform/production verification will be recorded after its deployment.
+
+## Historical version 0.2 evidence
 
 Validated in the Codex cloud environment on 2026-10-19 (Asia/Shanghai). No software or models were installed on the user's Windows PC.
 

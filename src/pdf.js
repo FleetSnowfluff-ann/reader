@@ -35,6 +35,7 @@ export class PDFReader {
     if (generation !== this.generation) return false;
     this.textLayer = new pdfjs.TextLayer({ textContentSource: extracted.content, container: textContainer, viewport });
     try { await this.textLayer.render(); } catch (error) { if (error.name === 'AbortException') return false; throw error; }
+    this.textLayer.textDivs.forEach((span, index) => { span.dataset.itemIndex = index; });
     return generation === this.generation;
   }
   exactRectangles(source, container) {

@@ -1,0 +1,61 @@
+/* The two paper surfaces share one pixel geometry; Reading Mode is reflowable. */
+.topbar {height:64px;} .document-bar {padding:12px 24px;} .reader-toolbar {padding:9px 24px;gap:12px;}
+.selection-toolbar {display:flex;align-items:center;gap:6px;padding:5px 24px;border-bottom:1px solid var(--line);min-height:36px;background:#fafbf8;flex-wrap:wrap;}
+.selection-toolbar>span {font-size:11px;color:var(--muted);margin-right:auto;max-width:40ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.selection-toolbar button {font-size:10px;padding:5px 8px;}
+.workspace,.workspace.notes-hidden {grid-template-columns:minmax(0,1fr) minmax(0,1fr);height:calc(100dvh - 238px);min-height:420px;}
+.workspace:not(.notes-hidden) {grid-template-columns:minmax(0,1fr) minmax(0,1fr) 280px;}
+.workspace[data-view=text],.workspace[data-view=pdf] {grid-template-columns:minmax(0,1fr) 280px;}
+.workspace.notes-hidden[data-view=text],.workspace.notes-hidden[data-view=pdf] {grid-template-columns:minmax(0,1fr);}
+.bilingual-pane {background:#e7ebe7;}
+.pdf-scroll {padding:22px 18px;scrollbar-gutter:stable;overscroll-behavior:contain;}
+.mirror-scroll {position:relative;}
+#mirror-page {position:relative;margin:0 auto;background:#fff;box-shadow:0 3px 14px #29392c15;isolation:isolate;}
+#mirror-canvas {display:block;}
+#mirror-content,#mirror-highlights {position:absolute;inset:0;}
+#mirror-highlights {pointer-events:none;z-index:5;}
+.mirror-source-layer {z-index:1;}
+.mirror-block {position:absolute;z-index:3;color:#1e302b;font-family:"Noto Serif CJK SC","Source Han Serif SC","Songti SC",SimSun,Georgia,serif;overflow-wrap:anywhere;user-select:text;text-align:justify;}
+.mirror-target,.mirror-english {cursor:text;box-decoration-break:clone;-webkit-box-decoration-break:clone;border-radius:2px;}
+.mirror-target:focus-visible,.mirror-english:focus-visible {outline:2px solid #407da0;}
+.mirror-target.selected,.mirror-english.selected {background:#b8d3c5a6;outline:1px solid #3c7b61;}
+.mirror-target.hovered,.mirror-english.hovered,.sentence-source.hovered,.sentence-target.hovered {background:#9edbff70;outline:1px solid #3196be;}
+.mirror-target.annotated {text-decoration:underline;text-decoration-color:#c79822;text-decoration-thickness:3px;text-underline-offset:3px;}
+.pdf-hover-mark {position:absolute;background:#74cfff;opacity:.38;outline:1px solid #218bad;pointer-events:none;}
+.pdf-linked-mark {background:#77ac91;opacity:.34;outline:1px solid #286a50;}
+.pdf-mark {background:#f1cf55;opacity:.4;pointer-events:none;}
+.mirror-caption {font-size:10px;line-height:1.5;color:#64756c;margin:0 auto 12px;max-width:65ch;min-height:30px;}
+#pdf-scroll {padding-top:64px;}
+#mirror-continuation {background:#fffefb;max-width:760px;margin:24px auto 0;padding:22px;border:1px solid #dddccf;box-shadow:0 3px 14px #29392c0c;}
+#mirror-continuation>h3 {font:20px Georgia,serif;}
+.continuation-entry {padding:14px 0;border-top:1px solid var(--line);}
+.continuation-label {font:10px/1.6 system-ui;color:#956c27;margin-bottom:8px;}
+.continuation-entry p {font:17px/1.9 "Noto Serif CJK SC","Songti SC",SimSun,serif;white-space:pre-wrap;overflow-wrap:anywhere;}
+.reading-content {display:none;min-height:0;flex:1;flex-direction:column;background:#fffefa;}
+.workspace[data-view=text] .reading-content {display:flex;}
+.workspace[data-view=text] #mirror-scroll {display:none;}
+.workspace[data-view=text] .sentences {padding:12px max(22px,calc((100% - 760px)/2)) 80px;}
+.workspace[data-view=text] .sentence-source,.workspace[data-view=text] .sentence-block:has(.sentence-target) .sentence-source {font:17px/1.8 Georgia,serif;color:#40544a;}
+.workspace[data-view=text] .sentence-target {font-size:19px;line-height:1.95;background:transparent;padding:14px 10px;color:#283f34;}
+.sentence-block {padding:24px 0;}
+.target-meta {opacity:.8;} .sentence-block:hover .target-meta {opacity:1;}
+#edit-text,#edit-source-ids {width:100%;} #edit-source {max-height:130px;overflow:auto;font:13px/1.7 Georgia,serif;}
+#translation-progress {width:100%;accent-color:var(--green);margin:12px 0;} #translation-limit {width:100%;}
+#translation-status {white-space:pre-wrap;} #service-status {color:#8a6227;}
+#undo,#redo {font-size:11px;}
+@media(max-width:1100px) {
+ .workspace,.workspace.notes-hidden,.workspace:not(.notes-hidden) {grid-template-columns:minmax(0,1fr) minmax(0,1fr);height:calc(100dvh - 238px);}
+ .pdf-pane,.bilingual-pane {height:100%;min-height:0;}
+ .notes-pane:not([hidden]) {position:fixed;right:12px;top:190px;bottom:20px;width:min(340px,90vw);max-height:none;z-index:12;box-shadow:0 8px 40px #24382f40;border:1px solid var(--line);border-radius:10px;}
+}
+@media(max-width:650px) {
+ .topbar {height:58px;}.document-bar {padding:10px 12px;}.reader-toolbar {padding:8px 12px;gap:5px;}
+ .reader-toolbar button {padding:7px;}.brand {font-size:22px;}.brand-mark{width:30px;height:30px;}
+ .selection-toolbar {padding:4px 12px;}.selection-toolbar>span{width:100%;max-width:none;}
+ .workspace,.workspace.notes-hidden,.workspace:not(.notes-hidden) {display:grid;grid-template-columns:minmax(0,1fr);height:auto;min-height:0;}
+ .workspace[data-view=split] .pdf-pane,.workspace[data-view=split] .bilingual-pane {height:68dvh;min-height:340px;}
+ .workspace[data-view=text] .bilingual-pane,.workspace[data-view=pdf] .pdf-pane {height:calc(100dvh - 260px);min-height:380px;}
+ .pdf-scroll {padding-left:10px;padding-right:10px;} .mirror-caption {max-width:100%;}
+ .workspace[data-view=text] .sentence-source{font-size:16px;}.workspace[data-view=text] .sentence-target{font-size:18px;}
+ #mirror-continuation {padding:16px;} .pane-heading {height:42px;}
+}
