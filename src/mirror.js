@@ -30,7 +30,7 @@ export function renderMirror({ sources, translations, canvas, textLayer, page, t
   const ctx=targetCanvas.getContext('2d'); ctx.drawImage(canvas,0,0);
   targetLayer.replaceChildren(); continuation.replaceChildren();
   const clone=textLayer.cloneNode(true); clone.id='mirror-source-layer'; clone.classList.add('mirror-source-layer'); targetLayer.append(clone);
-  const deferred=new Set(), replaced=new Set(); let fitted=0, adapted=0;
+  const deferred=new Set(), replaced=new Set(), layoutReport=[]; let fitted=0, adapted=0;
   for (const group of planLayout(sources,translations)) {
     if (!group.targets.length) continue;
     let reason=group.reason;
@@ -59,6 +59,7 @@ export function renderMirror({ sources, translations, canvas, textLayer, page, t
       targetLayer.append(block);
       if (block.scrollHeight>room.height*height+1 || block.scrollWidth>group.box.width*width+1) reason='Translation needs more space at readable type size';
     }
+    layoutReport.push({ sourceIds:group.sources.map(s=>s.id), reason, font:block.style.fontSize, requiredHeight:block.scrollHeight, availableHeight:room?.height*height, width:group.box?.width*width });
     if (reason) {
       block.remove();
       for (const t of group.targets) {
@@ -84,6 +85,7 @@ export function renderMirror({ sources, translations, canvas, textLayer, page, t
   }
   continuation.hidden=!continuation.children.length;
   if (continuation.children.length) continuation.prepend(make('h3','', 'Continuation · 译文续读'));
+  page.layoutReport=layoutReport;
   return { fitted, adapted, deferred:deferred.size, total:translations.length };
 }
 export function mirrorMarks(container, sources, { locked=[], hovered=[], notes=[] }) {

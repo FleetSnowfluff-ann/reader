@@ -355,7 +355,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
           await cdp.send('DOM.setFileInputFiles',{nodeId:input.nodeId,files:[file]});
           await until(()=>cdp.eval(`document.querySelector('#sentences').textContent.includes('为加快跟踪')`));
           await cdp.eval(`document.querySelector('#translation-dialog').close()`);
-          await until(()=>cdp.eval(`document.querySelector('#mirror-content').textContent.includes('为加快跟踪')`));
+          await until(()=>cdp.eval(`document.querySelector('#mirror-content').textContent.includes('为加快跟踪')`)).catch(async()=>{throw new Error('Representative layout did not fit: '+JSON.stringify(await cdp.eval(`document.querySelector('#mirror-page').layoutReport`)));});
           assert.ok(await cdp.eval(`(()=>{const p=document.querySelector('#mirror-page').getBoundingClientRect();const e=[...document.querySelectorAll('#mirror-content .mirror-target')].find(e=>e.textContent.startsWith('跟踪会将'));const r=e.getBoundingClientRect();return r.left>p.left+p.width/2&&r.top>=p.top&&parseFloat(getComputedStyle(e).fontSize)>=12;})()`),'Reviewed paragraph must actually fit on the Chinese paper in the right column');
           const retained=await cdp.eval(`(()=>{const a=document.querySelector('#pdf-canvas'),b=document.querySelector('#mirror-canvas');const left=a.getContext('2d').getImageData(0,0,a.width,a.height).data,right=b.getContext('2d').getImageData(0,0,b.width,b.height).data;let changedLeft=0,changedRight=0;for(let y=0;y<a.height;y++)for(let x=0;x<a.width;x++){const i=(y*a.width+x)*4;if(left[i]!==right[i]||left[i+1]!==right[i+1]||left[i+2]!==right[i+2]){if(x<a.width/2)changedLeft++;else changedRight++;}}return{changedLeft,changedRight};})()`);
           assert.equal(retained.changedLeft,0,'Other column pixels remain exactly unchanged');assert.ok(retained.changedRight>0,'Source glyphs are actually replaced, not just a duplicate screenshot');
@@ -363,7 +363,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
           await until(()=>cdp.eval(`document.querySelector('#sentences').checkVisibility()&&document.querySelector('#sentences').textContent.includes('为加快跟踪')`));
           assert.equal(await cdp.eval(`document.querySelector('#page-number').value`),'4');
           await cdp.eval(`document.querySelector('button[data-view="split"]').click()`);
-          await until(()=>cdp.eval(`document.querySelector('#mirror-content').textContent.includes('为加快跟踪')`));
+          await until(()=>cdp.eval(`document.querySelector('#mirror-content').textContent.includes('为加快跟踪')`)).catch(async()=>{throw new Error('Representative layout did not fit: '+JSON.stringify(await cdp.eval(`document.querySelector('#mirror-page').layoutReport`)));});
         }
         if (paper.file === 'tracemonkey.pdf' && page === 8) {
           const formulaId=await cdp.eval(`import('./src/storage.js').then(m=>m.storage('getAll')).then(r=>r.find(d=>d.name==='tracemonkey.pdf').sources[8].find(s=>s.warnings.some(w=>w.startsWith('Formula'))).id)`);
