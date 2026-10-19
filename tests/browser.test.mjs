@@ -200,6 +200,7 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await until(() => cdp.eval(`document.querySelector('#mirror-page').offsetWidth>0 && document.querySelector('#mirror-content .mirror-target')!==null`)).catch(async e=>{console.log('Mirror diagnostics',await cdp.eval(`({status:document.querySelector('#mirror-status').textContent,reasons:[...document.querySelectorAll('.continuation-label')].map(n=>n.textContent)})`));throw e;});
     const dimensions = await cdp.eval(`['#pdf-page','#mirror-page'].map(s=>{const r=document.querySelector(s).getBoundingClientRect();return [r.width,r.height]})`);
     assert.deepEqual(dimensions[0],dimensions[1]);
+    assert.ok(await cdp.eval(`[...document.querySelectorAll('.mirror-block')].every(e=>{const s=getComputedStyle(e);return parseFloat(s.fontSize)>=12&&parseFloat(s.lineHeight)/parseFloat(s.fontSize)>=1.299;})`),'No illegible font shrinking or excessive leading compression');
     await cdp.eval(`window.getSelection().removeAllRanges();document.querySelector('#clear-selection').click();document.querySelector('#pdf-scroll').scrollTop=0;document.querySelector('#mirror-scroll').scrollTop=0`);
     const point=await cdp.eval(`(()=>{const el=document.querySelector('#mirror-content .mirror-target');el.scrollIntoView({block:'center'});const r=el.getClientRects()[0];return {x:r.x+5,y:r.y+r.height/2,id:el.dataset.targetId};})()`);
     await cdp.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:point.x,y:point.y});
@@ -220,6 +221,10 @@ test('real browser: PDF, alignment, notes, privacy, export and responsive layout
     await until(()=>cdp.eval(`document.querySelector('#sentences').checkVisibility()`));
     assert.equal(await cdp.eval(`document.querySelector('#selection-label').textContent`),before);
     assert.ok(await cdp.eval(`document.querySelector('.sentence-target.selected')!==null`));
+    const readingTop=await cdp.eval(`document.querySelector('#sentences').scrollTop=180;document.querySelector('#sentences').scrollTop`);
+    await cdp.eval(`document.querySelector('#note-text').value='Reading position stays put';document.querySelector('#save-note').click()`);
+    await until(()=>cdp.eval(`document.querySelector('#notes-list').textContent.includes('Reading position stays put')`));
+    assert.equal(await cdp.eval(`document.querySelector('#sentences').scrollTop`),readingTop);
     await cdp.eval(`document.querySelector('button[data-view="split"]').click()`);
     await until(()=>cdp.eval(`document.querySelector('#mirror-scroll').checkVisibility()`));
   });

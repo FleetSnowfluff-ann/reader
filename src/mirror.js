@@ -57,9 +57,15 @@ export function renderMirror({ sources, translations, canvas, textLayer, page, t
         block.append(span,document.createTextNode(' '));
       }
       targetLayer.append(block);
+      // Platform CJK fonts wrap differently. Adjust leading within a readable
+      // bound, never the font size; longer text still goes to continuation.
+      for (const leading of [1.4, 1.35, 1.3]) {
+        if (block.scrollHeight <= room.height*height+1) break;
+        block.style.lineHeight=String(leading);
+      }
       if (block.scrollHeight>room.height*height+1 || block.scrollWidth>group.box.width*width+1) reason='Translation needs more space at readable type size';
     }
-    layoutReport.push({ sourceIds:group.sources.map(s=>s.id), reason, font:block.style.fontSize, requiredHeight:block.scrollHeight, availableHeight:room?.height*height, width:group.box?.width*width });
+    layoutReport.push({ sourceIds:group.sources.map(s=>s.id), reason, font:block.style.fontSize, leading:block.style.lineHeight, requiredHeight:block.scrollHeight, availableHeight:room?.height*height, width:group.box?.width*width });
     if (reason) {
       block.remove();
       for (const t of group.targets) {
@@ -71,7 +77,7 @@ export function renderMirror({ sources, translations, canvas, textLayer, page, t
       }
     } else {
       fitted++;
-      if (block.scrollHeight>group.box.height*height+2) { adapted++; block.dataset.spacing='adapted'; block.title='Spacing extended into verified blank space'; }
+      if (block.scrollHeight>group.box.height*height+2 || block.style.lineHeight !== '1.45') { adapted++; block.dataset.spacing='adapted'; block.title='Spacing adapted within 1.30–1.45 line height and verified blank space; font size unchanged'; }
       for (const source of group.sources) {
         for (const segment of source.segments||[]) replaced.add(segment.itemIndex);
         for (const r of source.rects||[]) { ctx.fillStyle='white'; ctx.fillRect(r.x*canvas.width-.6,r.y*canvas.height-.6,r.width*canvas.width+1.2,r.height*canvas.height+1.2); }

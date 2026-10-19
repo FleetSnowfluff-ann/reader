@@ -209,7 +209,7 @@ function translationCard(translation) {
 
 function renderSentences() {
   paintMirror();
-  const list = $('#sentences'); list.replaceChildren();
+  const list = $('#sentences'), readingTop = list.scrollTop; list.replaceChildren();
   const query = $('#search').value.trim().toLowerCase();
   if (!sources().length) { list.append(node('p', 'empty-state', 'No text was found on this page. It may be a scan. You can still read the PDF and add page notes. OCR is not included. 本页未提取到文本。')); return; }
   const rendered = new Set();
@@ -235,6 +235,7 @@ function renderSentences() {
   }
   for (const target of translations().filter(t => !t.sourceIds.length && (!query || t.text.toLowerCase().includes(query)))) list.append(translationCard(target));
   if (!list.childNodes.length) list.append(node('p', 'empty-state', 'No matching sentences on this page.'));
+  list.scrollTop = readingTop;
 }
 
 function showNotes(visible) {
@@ -277,6 +278,7 @@ async function goPage(value) {
   if (!Number.isInteger(page) || page < 1 || page > state.pdf.numPages) { $('#page-number').value = state.page; throw new Error('Enter a valid page number.'); }
   state.viewScrolls = {}; state.page = page; state.selected = null; state.quote = ''; state.activeSourceIds = []; state.hoveredIds = []; state.hoveredTargets = []; state.targetId = null; $('#search').value = '';
   await renderPage();
+  for (const pane of [$('#pdf-scroll'), $('#mirror-scroll'), $('#sentences')]) { pane.scrollTop=0; pane.scrollLeft=0; }
 }
 
 on('#open-file', 'click', () => $('#file-input').click());
@@ -298,9 +300,17 @@ for (const element of document.querySelectorAll('button[data-view]')) element.ad
   state.viewScrolls[previous] = { pdf: $('#pdf-scroll').scrollTop, mirror: $('#mirror-scroll').scrollTop, reading: $('#sentences').scrollTop };
   document.querySelectorAll('button[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b === element)));
   $('.workspace').dataset.view = element.dataset.view;
-  try { await renderPage(); const saved = state.viewScrolls[element.dataset.view];
-    if(saved){ $('#pdf-scroll').scrollTop=saved.pdf; $('#mirror-scroll').scrollTop=saved.mirror; $('#sentences').scrollTop=saved.reading; }
-    else if(state.selected && element.dataset.view==='text') $('#sentences').querySelector(`[data-source-id="${state.selected}"]`)?.scrollIntoView({block:'center'});
+  const saved = state.viewScrolls[element.dataset.view];
+  // Reading already has its source text. Restore before asynchronous PDF work so
+  // a reader's subsequent scroll or edit cannot be overwritten by its completion.
+  if (element.dataset.view === 'text') {
+    if (saved) $('#sentences').scrollTop=saved.reading;
+    else if (state.selected) $('#sentences').querySelector(`[data-source-id="${state.selected}"]`)?.scrollIntoView({block:'center'});
+  }
+  try { await renderPage();
+    if(saved && $('.workspace').dataset.view===element.dataset.view && element.dataset.view!=='text') {
+      $('#pdf-scroll').scrollTop=saved.pdf; $('#mirror-scroll').scrollTop=saved.mirror;
+    }
   } catch (error) { status(error.message, true); }
 });
 on('#search', 'input', renderSentences);
